@@ -209,6 +209,61 @@ def _sentence_grouped_fieldnames(vendors: List[VendorConfig]) -> List[str]:
     return fn
 
 
+_LONG_CSV_FIELDS = (
+    "corpus",
+    "index",
+    "vendor",
+    "gold",
+    "pinyin",
+    "prediction",
+    "exact",
+    "cer",
+    "error",
+)
+
+
+def _build_long_rows_by_sentence(
+    per_sentence: List[Dict[str, Any]],
+    vendors: List[VendorConfig],
+) -> List[Dict[str, Any]]:
+    """Same columns as *_long.csv, rows ordered: sentence1×all vendors, sentence2×all vendors, …"""
+    order: List[Tuple[Any, ...]] = []
+    seen: Set[Tuple[Any, ...]] = set()
+    for row in per_sentence:
+        k = (row["corpus"], row["index"], row["gold"], row["pinyin"])
+        if k not in seen:
+            seen.add(k)
+            order.append(k)
+
+    by_key_vendor: Dict[Tuple[Tuple[Any, ...], str], Dict[str, Any]] = {}
+    for row in per_sentence:
+        k = (row["corpus"], row["index"], row["gold"], row["pinyin"])
+        by_key_vendor[(k, row["vendor"])] = row
+
+    out: List[Dict[str, Any]] = []
+    vkeys = [v.key for v in vendors]
+    for k in order:
+        for vk in vkeys:
+            r = by_key_vendor.get((k, vk))
+            if r is not None:
+                out.append(r)
+    return out
+
+
+def _write_long_csv_by_sentence(
+    path: Path,
+    per_sentence: List[Dict[str, Any]],
+    vendors: List[VendorConfig],
+) -> None:
+    rows = _build_long_rows_by_sentence(per_sentence, vendors)
+    fn = list(_LONG_CSV_FIELDS)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fn, extrasaction="ignore")
+        w.writeheader()
+        for row in rows:
+            w.writerow(row)
+
+
 def _build_sentence_grouped_rows(
     per_sentence: List[Dict[str, Any]],
     vendors: List[VendorConfig],
@@ -599,23 +654,15 @@ def run_benchmark(
         json_path = out_dir / f"{base}.json"
         csv_grouped = out_dir / f"{base}.csv"
         csv_long = out_dir / f"{base}_long.csv"
+        csv_long_by_sentence = out_dir / f"{base}_long_by_sentence.csv"
         _write_sentence_grouped_csv(csv_grouped, rows, vendors)
-        long_fields = [
-            "corpus",
-            "index",
-            "vendor",
-            "gold",
-            "pinyin",
-            "prediction",
-            "exact",
-            "cer",
-            "error",
-        ]
+        fn = list(_LONG_CSV_FIELDS)
         with csv_long.open("w", encoding="utf-8", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=long_fields)
+            w = csv.DictWriter(f, fieldnames=fn)
             w.writeheader()
             for row in rows:
                 w.writerow(row)
+        _write_long_csv_by_sentence(csv_long_by_sentence, rows, vendors)
         sum_rows = _summary_csv_rows_for_block(corpus_label, summary, vendors)
         _write_summary_csv(out_dir / f"{base}_summary.csv", sum_rows)
         timings["write_artifacts_ms"] = round((time.perf_counter() - t_w0) * 1000, 2)
@@ -633,11 +680,12 @@ def run_benchmark(
             timings_one_corpus=timings,
         )
         logger.info(
-            "[写出结果] 完成: 耗时 %.2f ms | %s | %s | %s | %s_report.txt",
+            "[写出结果] 完成: 耗时 %.2f ms | %s | %s | %s | %s | %s_report.txt",
             timings["write_artifacts_ms"],
             json_path.name,
             csv_grouped.name,
             csv_long.name,
+            csv_long_by_sentence.name,
             base,
         )
 
@@ -659,23 +707,15 @@ def _write_combined_artifacts(
     json_path = out_dir / f"{base}.json"
     csv_grouped = out_dir / f"{base}.csv"
     csv_long = out_dir / f"{base}_long.csv"
+    csv_long_by_sentence = out_dir / f"{base}_long_by_sentence.csv"
     _write_sentence_grouped_csv(csv_grouped, payload["per_sentence"], vendors)
-    long_fields = [
-        "corpus",
-        "index",
-        "vendor",
-        "gold",
-        "pinyin",
-        "prediction",
-        "exact",
-        "cer",
-        "error",
-    ]
+    fn = list(_LONG_CSV_FIELDS)
     with csv_long.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=long_fields)
+        w = csv.DictWriter(f, fieldnames=fn)
         w.writeheader()
         for row in payload["per_sentence"]:
             w.writerow(row)
+    _write_long_csv_by_sentence(csv_long_by_sentence, payload["per_sentence"], vendors)
     _write_multi_summary_csv(
         out_dir / f"{base}_summary.csv",
         payload["summary_by_corpus"],
@@ -746,11 +786,13 @@ def _write_combined_artifacts(
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     logger.info(
-        "[写出结果] 合并完成: 写文件 %.2f ms | 墙钟总计 %.2f ms | %s | %s",
+        "[写出结果] 合并完成: 写文件 %.2f ms | 墙钟总计 %.2f ms | %s | %s | %s | %s",
         float(payload.get("timings_combined_write_ms", 0) or 0),
         float(payload.get("timings_wall_total_ms", 0) or 0),
         json_path.name,
         csv_grouped.name,
+        csv_long.name,
+        csv_long_by_sentence.name,
     )
 
 
@@ -908,9 +950,10 @@ def main() -> None:
 
     print(json.dumps({"summary_by_corpus": summary_by_corpus, "summary_overall": summary_overall}, ensure_ascii=False, indent=2))
     logger.info(
-        "[结束] 多语料评测完成 | 墙钟总计约 %.2f ms | 主 CSV: %s | 摘要: %s",
+        "[结束] 多语料评测完成 | 墙钟总计约 %.2f ms | 主 CSV: %s | 按句窄表: %s | 摘要: %s",
         float(payload.get("timings_wall_total_ms", 0) or 0),
         f"{base}.csv",
+        f"{base}_long_by_sentence.csv",
         f"{base}_report.txt",
     )
 

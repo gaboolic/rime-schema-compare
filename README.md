@@ -54,7 +54,8 @@ With no `--corpus` argument, **all `*.txt` files under `data/corpus/`** are eval
 | File | Content |
 |------|---------|
 | `benchmark_all_corpus_<ts>.csv` | **按句一行**：`corpus,index,gold,pinyin`，其后各方案依次为 `*_sentence_correct`(0/1)、`*_character_accuracy_percent`(该句)、`*_prediction`、`*_error` |
-| `benchmark_all_corpus_<ts>_long.csv` | 窄表：每句 × 每方案一行（旧版明细） |
+| `benchmark_all_corpus_<ts>_long.csv` | 窄表：每句 × 每方案一行；行序为**先按方案再按句**（与解码循环一致） |
+| `benchmark_all_corpus_<ts>_long_by_sentence.csv` | 同上列结构；行序为**先按句再按方案**（句1 方案1/2/3，句2 …） |
 | `benchmark_all_corpus_<ts>_summary.csv` | 汇总：语料 × 方案 |
 | `benchmark_all_corpus_<ts>_report.txt` | 中文摘要：各方案句子正确率、文字正确率 |
 | `benchmark_all_corpus_<ts>.json` | 完整 JSON（含 `per_sentence` 窄表数据） |
