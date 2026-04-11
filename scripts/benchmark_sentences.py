@@ -44,11 +44,14 @@ except ImportError:
     pass
 
 from rime_schema_compare.config import DEFAULT_VENDORS, VendorConfig, resolve_rime_dll, repo_root, shared_data_dir
-from rime_schema_compare.metrics import cer_sentence, levenshtein, sentence_exact_match
+from rime_schema_compare.eval_synonyms import EvalSynonymConfig, load_eval_synonyms_config
+from rime_schema_compare.metrics import levenshtein, sentence_exact_match
 from rime_schema_compare.rime_runner import RimeDistroRunner
 from rime_schema_compare.text_pipeline import (
+    MIN_EVAL_HANZI_CHARS,
     extract_hanzi,
     is_pure_hanzi_segment,
+    segment_has_ascii_digit_or_letter,
     sentence_to_continuous_pinyin,
     split_sentences,
 )
@@ -132,17 +135,23 @@ def _accumulate_char_metrics(
     gold: str,
     pred: str,
     res_ok: bool,
+    normalize,
 ) -> tuple[int, Optional[float]]:
-    """Return (levenshtein_distance, cer for this sentence or None if no gold)."""
-    if not gold:
+    """Return (levenshtein_distance, cer for this sentence or None if no gold).
+
+    ``normalize`` is applied to gold/pred before distance/CER (同义词等价评测).
+    """
+    g = normalize(gold)
+    if not g:
         return 0, None
     if res_ok:
-        dist = levenshtein(pred, gold)
-        cer = cer_sentence(pred, gold)
+        p = normalize(pred)
+        dist = levenshtein(p, g)
+        cer = dist / len(g) if g else 0.0
     else:
-        dist = len(gold)
+        dist = len(g)
         cer = 1.0
-    L = len(gold)
+    L = len(g)
     st["cer_char_total_edits"] += dist
     st["cer_char_total_gold_len"] += L
     st["char_acc_sentence_sum"] += max(0.0, min(1.0, 1.0 - dist / L))
@@ -264,6 +273,84 @@ def _write_long_csv_by_sentence(
             w.writerow(row)
 
 
+def _exact_map_by_sentence(
+    per_sentence: List[Dict[str, Any]],
+    vendors: List[VendorConfig],
+) -> Tuple[List[Tuple[Any, ...]], Dict[Tuple[Any, ...], Dict[str, bool]]]:
+    """Sentence key order + per-vendor exact (missing vendor → False)."""
+    order: List[Tuple[Any, ...]] = []
+    seen: Set[Tuple[Any, ...]] = set()
+    for row in per_sentence:
+        k = (row["corpus"], row["index"], row["gold"], row["pinyin"])
+        if k not in seen:
+            seen.add(k)
+            order.append(k)
+    want = {v.key for v in vendors}
+    by_key: Dict[Tuple[Any, ...], Dict[str, bool]] = {k: {vk: False for vk in want} for k in order}
+    for row in per_sentence:
+        k = (row["corpus"], row["index"], row["gold"], row["pinyin"])
+        vk = row["vendor"]
+        if vk in want:
+            by_key[k][vk] = bool(row.get("exact"))
+    return order, by_key
+
+
+def _write_scheme_compare_txt(
+    path: Path,
+    *,
+    generated_utc: str,
+    mode: str,
+    per_sentence: List[Dict[str, Any]],
+    vendors: List[VendorConfig],
+) -> None:
+    """
+    各方案「比其他方案多正确」的句子：独有判对 + 相对每个对手多判对。
+    """
+    order, by_key = _exact_map_by_sentence(per_sentence, vendors)
+    vkeys = [v.key for v in vendors]
+    lines: List[str] = [
+        "=" * 72,
+        "各方案相对其他方案的整句判对对比",
+        "=" * 72,
+        f"生成时间 (UTC): {generated_utc}",
+        f"模式: {mode}",
+        "",
+        "说明:",
+        "  · 「仅本方案判对」：该句仅当前方案整句与金文完全一致，其余参与对比的方案均未判对。",
+        "  · 「相对 [X] 多判对」：当前方案判对且方案 X 未判对（不要求其他方案是否判对）。",
+        "",
+    ]
+    for vk in vkeys:
+        lines.append("-" * 72)
+        lines.append(f"【{vk}】")
+        others = [x for x in vkeys if x != vk]
+        exclusive = [
+            k
+            for k in order
+            if by_key[k].get(vk) and all(not by_key[k].get(o) for o in others)
+        ]
+        lines.append(
+            f"· 仅本方案判对（其余 {len(others)} 个方案均未判对）: {len(exclusive)} 句"
+        )
+        if exclusive:
+            for corpus, idx, gold, _py in exclusive:
+                lines.append(f"    [{corpus} #{idx}] {gold}")
+        else:
+            lines.append("    （无）")
+        lines.append("")
+        for o in others:
+            wins = [k for k in order if by_key[k].get(vk) and not by_key[k].get(o)]
+            lines.append(f"· 相对 [{o}] 多判对（本对、对方错）: {len(wins)} 句")
+            if wins:
+                for corpus, idx, gold, _py in wins:
+                    lines.append(f"    [{corpus} #{idx}] {gold}")
+            else:
+                lines.append("    （无）")
+            lines.append("")
+    lines.append("=" * 72)
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
 def _build_sentence_grouped_rows(
     per_sentence: List[Dict[str, Any]],
     vendors: List[VendorConfig],
@@ -358,6 +445,7 @@ def _write_report_txt(
     timings_one_corpus: Optional[Dict[str, Any]] = None,
     timings_by_corpus: Optional[Dict[str, Dict[str, Any]]] = None,
     timings_wall_total_ms: Optional[float] = None,
+    eval_synonyms_summary: Optional[str] = None,
 ) -> None:
     lines: List[str] = [
         "=" * 72,
@@ -405,9 +493,14 @@ def _write_report_txt(
             lines.extend(_format_timings_lines(timings_by_corpus[stem], indent="    "))
         lines.append("")
     lines.append("=" * 72)
+    if eval_synonyms_summary:
+        lines.append(f"同义词归一化（句级完全匹配与 CER 计算前）: {eval_synonyms_summary}")
+        lines.append("")
     lines.append(
-        "说明: 分句后仅「纯汉字」片段参与评测（含数字、英文字母或其它符号的片段已过滤）。"
-        "句子正确率 = 预测与金句完全一致的比例；文字正确率 = 全语料 (总字数−总编辑距离)/总字数。"
+        "说明: 分句后仅「纯汉字」且不含 ASCII 数字/英文字母、汉字不少于 "
+        f"{MIN_EVAL_HANZI_CHARS} 字的片段参与评测；其它片段已过滤。"
+        "句子正确率 = 归一化后预测与金句完全一致的比例；"
+        "文字正确率 = 全语料 (归一化后总字数−总编辑距离)/归一化后总字数。"
     )
     path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -418,6 +511,7 @@ def _aggregate_summaries(per_corpus: Dict[str, Dict[str, Any]], vendors: List[Ve
         "skipped_no_hanzi",
         "skipped_no_pinyin",
         "skipped_mixed_content",
+        "skipped_too_short",
         "decode_failed",
         "exact_matches",
         "cer_char_total_edits",
@@ -437,6 +531,16 @@ def _aggregate_summaries(per_corpus: Dict[str, Dict[str, Any]], vendors: List[Ve
     return _finalize_summary(agg_stats, vendors)
 
 
+def _init_eval_synonyms(
+    root: Path, explicit: Optional[Path]
+) -> Tuple[EvalSynonymConfig, Path]:
+    if explicit is not None:
+        path = explicit if explicit.is_absolute() else (root / explicit)
+    else:
+        path = root / "data" / "eval_synonyms.json"
+    return load_eval_synonyms_config(path), path
+
+
 def run_benchmark(
     corpus_path: Path,
     out_dir: Path,
@@ -445,11 +549,14 @@ def run_benchmark(
     corpus_label: str,
     progress_every: int,
     *,
+    eval_synonyms: EvalSynonymConfig,
+    eval_synonyms_path: Path,
     write_artifacts: bool = True,
     stamp: Optional[str] = None,
     artifact_base: Optional[str] = None,
 ) -> Dict[str, Any]:
     timings: Dict[str, Any] = {"vendors": {}}
+    norm = eval_synonyms.normalize
 
     logger.info("[语料:%s] 读取 UTF-8: %s", corpus_label, corpus_path)
     t0 = time.perf_counter()
@@ -477,6 +584,7 @@ def run_benchmark(
             "skipped_no_hanzi": 0,
             "skipped_no_pinyin": 0,
             "skipped_mixed_content": 0,
+            "skipped_too_short": 0,
             "decode_failed": 0,
             "exact_matches": 0,
             "cer_char_total_edits": 0,
@@ -486,7 +594,8 @@ def run_benchmark(
         }
 
     logger.info(
-        "[pypinyin] 开始: 仅纯汉字片段进入评测；extract_hanzi + lazy_pinyin(Style.NORMAL)"
+        "[pypinyin] 开始: 纯汉字、无 ASCII 数字/字母、至少 %d 字；extract_hanzi + lazy_pinyin(Style.NORMAL)",
+        MIN_EVAL_HANZI_CHARS,
     )
     t_py0 = time.perf_counter()
     prepared: List[Optional[Dict[str, Any]]] = []
@@ -495,10 +604,20 @@ def run_benchmark(
         if not piece:
             prepared.append(None)
             continue
+        if segment_has_ascii_digit_or_letter(piece):
+            prepared.append(None)
+            for v in vendors:
+                stats[v.key]["skipped_mixed_content"] += 1
+            continue
         if not is_pure_hanzi_segment(piece):
             prepared.append(None)
             for v in vendors:
                 stats[v.key]["skipped_mixed_content"] += 1
+            continue
+        if len(piece) < MIN_EVAL_HANZI_CHARS:
+            prepared.append(None)
+            for v in vendors:
+                stats[v.key]["skipped_too_short"] += 1
             continue
         gold = extract_hanzi(piece)
         if not gold:
@@ -520,12 +639,16 @@ def run_benchmark(
     sk_h = stats[vendors[0].key]["skipped_no_hanzi"] if vendors else 0
     sk_p = stats[vendors[0].key]["skipped_no_pinyin"] if vendors else 0
     sk_m = stats[vendors[0].key]["skipped_mixed_content"] if vendors else 0
+    sk_short = stats[vendors[0].key]["skipped_too_short"] if vendors else 0
     logger.info(
-        "[pypinyin] 完成: 耗时 %.2f ms | 可评测 %d 句 | 跳过 %d 段（含非纯汉字 %d，无汉字 %d，无拼音 %d）",
+        "[pypinyin] 完成: 耗时 %.2f ms | 可评测 %d 句 | 跳过 %d 段（混合/非纯汉字或含 ASCII 数字字母: %d，"
+        "纯汉字但不足 %d 字: %d，无汉字: %d，无拼音: %d）",
         timings["pypinyin_ms"],
         n_prepared,
         n_skip,
         sk_m,
+        MIN_EVAL_HANZI_CHARS,
+        sk_short,
         sk_h,
         sk_p,
     )
@@ -552,7 +675,7 @@ def run_benchmark(
                     gold = slot["gold"]
                     st["sentences_total"] += 1
                     st["decode_failed"] += 1
-                    _, cer = _accumulate_char_metrics(st, gold, "", False)
+                    _, cer = _accumulate_char_metrics(st, gold, "", False, norm)
                     rows.append(
                         {
                             "corpus": corpus_label,
@@ -598,10 +721,10 @@ def run_benchmark(
                 gold = slot["gold"]
                 if not res.ok:
                     st["decode_failed"] += 1
-                exact = res.ok and sentence_exact_match(pred, gold)
+                exact = res.ok and sentence_exact_match(norm(pred), norm(gold))
                 if exact:
                     st["exact_matches"] += 1
-                _, cer = _accumulate_char_metrics(st, gold, pred, res.ok)
+                _, cer = _accumulate_char_metrics(st, gold, pred, res.ok, norm)
 
                 rows.append(
                     {
@@ -646,6 +769,12 @@ def run_benchmark(
         "summary": summary,
         "per_sentence": rows,
         "timings": timings,
+        "eval_synonyms": {
+            "config_path": str(eval_synonyms_path.resolve())
+            if eval_synonyms_path.is_file()
+            else None,
+            "rules_summary": eval_synonyms.summary_line(),
+        },
     }
 
     if write_artifacts:
@@ -663,6 +792,14 @@ def run_benchmark(
             for row in rows:
                 w.writerow(row)
         _write_long_csv_by_sentence(csv_long_by_sentence, rows, vendors)
+        path_scheme = out_dir / f"{base}_scheme_compare.txt"
+        _write_scheme_compare_txt(
+            path_scheme,
+            generated_utc=stamp,
+            mode=f"单语料 ({corpus_label})",
+            per_sentence=rows,
+            vendors=vendors,
+        )
         sum_rows = _summary_csv_rows_for_block(corpus_label, summary, vendors)
         _write_summary_csv(out_dir / f"{base}_summary.csv", sum_rows)
         timings["write_artifacts_ms"] = round((time.perf_counter() - t_w0) * 1000, 2)
@@ -678,14 +815,16 @@ def run_benchmark(
             vendors=vendors,
             mode=f"单语料 ({corpus_label})",
             timings_one_corpus=timings,
+            eval_synonyms_summary=eval_synonyms.summary_line(),
         )
         logger.info(
-            "[写出结果] 完成: 耗时 %.2f ms | %s | %s | %s | %s | %s_report.txt",
+            "[写出结果] 完成: 耗时 %.2f ms | %s | %s | %s | %s | %s | %s_report.txt",
             timings["write_artifacts_ms"],
             json_path.name,
             csv_grouped.name,
             csv_long.name,
             csv_long_by_sentence.name,
+            path_scheme.name,
             base,
         )
 
@@ -716,6 +855,14 @@ def _write_combined_artifacts(
         for row in payload["per_sentence"]:
             w.writerow(row)
     _write_long_csv_by_sentence(csv_long_by_sentence, payload["per_sentence"], vendors)
+    path_scheme = out_dir / f"{base}_scheme_compare.txt"
+    _write_scheme_compare_txt(
+        path_scheme,
+        generated_utc=stamp,
+        mode="全部语料 (data/corpus/*.txt)",
+        per_sentence=payload["per_sentence"],
+        vendors=vendors,
+    )
     _write_multi_summary_csv(
         out_dir / f"{base}_summary.csv",
         payload["summary_by_corpus"],
@@ -737,6 +884,7 @@ def _write_combined_artifacts(
         )
 
     t_r0 = time.perf_counter()
+    _es = payload.get("eval_synonyms") or {}
     _write_report_txt(
         out_dir / f"{base}_report.txt",
         generated_utc=stamp,
@@ -748,6 +896,7 @@ def _write_combined_artifacts(
         mode="全部语料 (data/corpus/*.txt)",
         timings_by_corpus=payload.get("timings_by_corpus"),
         timings_wall_total_ms=None,
+        eval_synonyms_summary=_es.get("rules_summary"),
     )
     t_r1 = time.perf_counter()
     payload["timings_report_write_ms"] = round((t_r1 - t_r0) * 1000, 2)
@@ -778,6 +927,7 @@ def _write_combined_artifacts(
         mode="全部语料 (data/corpus/*.txt)",
         timings_by_corpus=payload.get("timings_by_corpus"),
         timings_wall_total_ms=payload.get("timings_wall_total_ms"),
+        eval_synonyms_summary=_es.get("rules_summary"),
     )
     if wall_clock_start is not None:
         payload["timings_wall_total_ms"] = round(
@@ -786,13 +936,14 @@ def _write_combined_artifacts(
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
     logger.info(
-        "[写出结果] 合并完成: 写文件 %.2f ms | 墙钟总计 %.2f ms | %s | %s | %s | %s",
+        "[写出结果] 合并完成: 写文件 %.2f ms | 墙钟总计 %.2f ms | %s | %s | %s | %s | %s",
         float(payload.get("timings_combined_write_ms", 0) or 0),
         float(payload.get("timings_wall_total_ms", 0) or 0),
         json_path.name,
         csv_grouped.name,
         csv_long.name,
         csv_long_by_sentence.name,
+        path_scheme.name,
     )
 
 
@@ -834,6 +985,12 @@ def main() -> None:
         help="Subset of vendor keys: rime_frost rime_ice wanxiang",
     )
     p.add_argument("--progress-every", type=int, default=50, help="Print progress every N raw segments (0=off)")
+    p.add_argument(
+        "--eval-synonyms",
+        type=Path,
+        default=None,
+        help="同义词评测 JSON（默认 data/eval_synonyms.json；文件不存在则用内置规则）",
+    )
     args = p.parse_args()
 
     root = repo_root()
@@ -848,6 +1005,12 @@ def main() -> None:
         "[启动] 将对比 %d 套方案: %s",
         len(vendors),
         ", ".join(f"{v.key}(schema={v.schema_id})" for v in vendors),
+    )
+    syn_cfg, syn_path = _init_eval_synonyms(root, args.eval_synonyms)
+    logger.info("[评测] 同义词归一化: %s", syn_cfg.summary_line())
+    logger.info(
+        "[评测] 同义词配置: %s",
+        syn_path if syn_path.is_file() else f"{syn_path}（不存在，使用内置）",
     )
 
     corpora: List[Tuple[Path, str]]
@@ -881,12 +1044,19 @@ def main() -> None:
             vendors=vendors,
             corpus_label=label,
             progress_every=args.progress_every,
+            eval_synonyms=syn_cfg,
+            eval_synonyms_path=syn_path,
             write_artifacts=True,
             stamp=stamp,
             artifact_base=f"benchmark_{label}_{stamp}",
         )
         print(json.dumps(payload["summary"], ensure_ascii=False, indent=2))
-        logger.info("[结束] 单语料评测完成，输出目录: %s", out_dir.resolve())
+        art = f"benchmark_{label}_{stamp}"
+        logger.info(
+            "[结束] 单语料评测完成 | 方案对比: %s_scheme_compare.txt | 输出目录: %s",
+            art,
+            out_dir.resolve(),
+        )
         return
 
     if args.label:
@@ -920,6 +1090,8 @@ def main() -> None:
             vendors=vendors,
             corpus_label=stem,
             progress_every=args.progress_every,
+            eval_synonyms=syn_cfg,
+            eval_synonyms_path=syn_path,
             write_artifacts=False,
             stamp=stamp,
         )
@@ -945,15 +1117,20 @@ def main() -> None:
         "per_sentence": all_rows,
         "timings_by_corpus": timings_by_corpus,
         "timings_aggregate_ms": aggregate_ms,
+        "eval_synonyms": {
+            "config_path": str(syn_path.resolve()) if syn_path.is_file() else None,
+            "rules_summary": syn_cfg.summary_line(),
+        },
     }
     _write_combined_artifacts(out_dir, stamp, base, payload, vendors, wall_clock_start=t_wall)
 
     print(json.dumps({"summary_by_corpus": summary_by_corpus, "summary_overall": summary_overall}, ensure_ascii=False, indent=2))
     logger.info(
-        "[结束] 多语料评测完成 | 墙钟总计约 %.2f ms | 主 CSV: %s | 按句窄表: %s | 摘要: %s",
+        "[结束] 多语料评测完成 | 墙钟总计约 %.2f ms | 主 CSV: %s | 按句窄表: %s | 方案对比: %s | 摘要: %s",
         float(payload.get("timings_wall_total_ms", 0) or 0),
         f"{base}.csv",
         f"{base}_long_by_sentence.csv",
+        f"{base}_scheme_compare.txt",
         f"{base}_report.txt",
     )
 
