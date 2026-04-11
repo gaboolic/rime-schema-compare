@@ -12,6 +12,15 @@ def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+# Rime `shared_data_dir`: program-wide read-only config/dicts (repo-local).
+SHARED_DATA_REL = "vendor/data"
+
+
+def shared_data_dir(root: Optional[Path] = None) -> Path:
+    base = root or repo_root()
+    return (base / SHARED_DATA_REL).resolve()
+
+
 @dataclass(frozen=True)
 class VendorConfig:
     """One Rime distribution checkout (git submodule path)."""
@@ -34,11 +43,14 @@ DEFAULT_VENDORS: List[VendorConfig] = [
 
 
 def default_rime_dll_candidates() -> List[Path]:
-    """Common Weasel install locations on Windows."""
+    """Prefer repo-root rime.dll, then common Weasel install locations on Windows."""
+    out: List[Path] = []
+    root_dll = repo_root() / "rime.dll"
+    if root_dll.is_file():
+        out.append(root_dll)
     program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
     program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
     roots = [Path(program_files), Path(program_files_x86)]
-    out: List[Path] = []
     for root in roots:
         weasel = root / "Rime"
         if weasel.is_dir():

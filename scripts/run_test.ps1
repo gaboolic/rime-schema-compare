@@ -1,0 +1,1 @@
+$env:PYTHONPATH="src"; python scripts\benchmark_sentences.py --progress-every 0 2>&1

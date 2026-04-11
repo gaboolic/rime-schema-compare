@@ -291,7 +291,9 @@ class RimeDllWrapper:
         self.dll_path = dll_path
         self.session_id = 0
         self.api = None
+        self._rime_set_input = None  # RimeSetInput(session_id, utf8) if DLL supports it
         self._setup_api()
+        self._bind_set_input()
     
     def _setup_api(self):
         """设置 API 函数签名"""
@@ -313,7 +315,23 @@ class RimeDllWrapper:
         # 定义 RimeApi 结构体的关键函数指针
         # 注意：这是简化版本，完整实现需要定义所有函数指针
         self._setup_function_pointers()
-    
+
+    def _bind_set_input(self) -> None:
+        """Prefer RimeSetInput (librime 1.9+) over RimeSimulateKeySequence for bulk pinyin."""
+        for name in ("RimeSetInput", "rime_set_input"):
+            if hasattr(self.dll, name):
+                try:
+                    fn = getattr(self.dll, name)
+                    fn.argtypes = [ctypes.c_uint64, ctypes.c_char_p]
+                    fn.restype = ctypes.c_int
+                    self._rime_set_input = fn
+                    return
+                except Exception:
+                    continue
+
+    def uses_set_input(self) -> bool:
+        return self._rime_set_input is not None
+
     def _check_exported_functions(self):
         """检查 DLL 导出的函数"""
         exported_funcs = []
@@ -722,9 +740,31 @@ class RimeDllWrapper:
             print(f"销毁会话失败: {e}")
             return False
     
+    def set_input(self, session_id: int, raw_input: str) -> bool:
+        """
+        直接设置会话的原始输入（与 Rime 内部 buffer 一致），一次调用完成。
+
+        需要较新的 librime（导出 ``RimeSetInput``）。整句拼音评测应优先用本方法，
+        避免 :meth:`simulate_key_sequence` 在 C++ 层对字符串逐键 ``ProcessKey`` 的开销。
+        """
+        if self._rime_set_input is None:
+            return False
+        try:
+            return bool(self._rime_set_input(session_id, raw_input.encode("utf-8")))
+        except Exception as e:
+            print(f"RimeSetInput 失败: {e}")
+            return False
+
+    def feed_pinyin(self, session_id: int, pinyin: str) -> bool:
+        """Set raw pinyin in one shot when supported, else fall back to key simulation."""
+        if self.set_input(session_id, pinyin):
+            return True
+        return self.simulate_key_sequence(session_id, pinyin)
+
     def simulate_key_sequence(self, session_id: int, key_sequence: str) -> bool:
         """
-        模拟按键序列
+        调用 ``RimeSimulateKeySequence``：Python 侧只调一次 DLL，但 librime 内部仍会
+        把 ``key_sequence`` 拆成按键并逐键处理；长拼音串时比 :meth:`set_input` 慢。
         
         Args:
             session_id: 会话 ID

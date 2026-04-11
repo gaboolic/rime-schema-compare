@@ -6,6 +6,13 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+if sys.platform == "win32":
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+        except Exception:
+            pass
+
 _ROOT = Path(__file__).resolve().parents[1]
 _SRC = _ROOT / "src"
 if str(_SRC) not in sys.path:
@@ -21,6 +28,7 @@ def main() -> None:
     runner = RimeDistroRunner(dll)
     try:
         runner.switch_distro(v)
+        print("pinyin_feed_mode:", runner.pinyin_feed_mode)
         r = runner.decode_pinyin("ceshi")
         print("dll:", dll)
         print("vendor:", v.key, v.schema_id)

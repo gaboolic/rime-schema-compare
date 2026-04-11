@@ -197,6 +197,9 @@ cython_debug/
 # Benchmark outputs
 artifacts/
 
+# Local librime copy (optional)
+/rime.dll
+
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
 #  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
@@ -208,3 +211,6 @@ artifacts/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+vendor/*/*.userdb/
