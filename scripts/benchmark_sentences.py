@@ -43,6 +43,7 @@ try:
 except ImportError:
     pass
 
+from rime_schema_compare.benchmark_env import prepare_vendor_for_benchmark
 from rime_schema_compare.config import DEFAULT_VENDORS, VendorConfig, resolve_rime_dll, repo_root, shared_data_dir
 from rime_schema_compare.eval_synonyms import EvalSynonymConfig, load_eval_synonyms_config
 from rime_schema_compare.metrics import levenshtein, sentence_exact_match
@@ -656,6 +657,20 @@ def run_benchmark(
     )
 
     try:
+        root = repo_root()
+        for v in vendors:
+            ud_prep = v.data_dir(root)
+            if ud_prep.is_dir():
+                info = prepare_vendor_for_benchmark(ud_prep, v.schema_id)
+                logger.info(
+                    "[评测环境] %s 已移除 userdb %d 处；已合并 patch（禁用用户词库）→ %s",
+                    v.key,
+                    len(info["userdb_paths_removed"]),
+                    info["custom_yaml"],
+                )
+            else:
+                logger.warning("[评测环境] %s 用户目录不存在，跳过清理与 patch: %s", v.key, ud_prep)
+
         for v in vendors:
             st = stats[v.key]
             ud = v.data_dir()

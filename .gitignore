@@ -214,3 +214,6 @@ __marimo__/
 
 
 vendor/*/*.userdb/
+vendor/*/*.custom.yaml/
+vendor/*/installation.yaml/
+vendor/*/user.yaml/
