@@ -7,8 +7,14 @@ from typing import List
 
 from pypinyin import Style, lazy_pinyin
 
-# Chinese and ASCII comma / full stop / period
-_SPLIT_RE = re.compile(r"[，,。.]+")
+# 分句后片段须能通过 is_pure_hanzi_segment，故全角逗号、句号始终作为切分点；引号内逗号也要切，否则会留下「汉字+，」。
+# 用 “ ” 配对深度避免策略性误伤（主要纠偏：ASCII 句点 `.` 在小数 68.4 等处不可当句号）。
+_OPEN_CQ = "\u201c"  # “
+_CLOSE_CQ = "\u201d"  # ”
+_QUOTE_EDGE_RE = re.compile(r'^[\s\"“”‘’]+|[\s\"“”‘’]+$')
+
+# 分句后丢弃：含顿号、中文书名号《》的片段（机构枚举、文件标题等，不参与拼音评测）
+_DUNHAO_OR_SHUMINGHAO_RE = re.compile(r"[、]|《|》")
 
 # 片段在去掉首尾空白后须「全部为汉字」才参与评测（含数字、拉丁字母、符号则丢弃）
 _HANZI_ONLY_RE = re.compile(r"^[\u4e00-\u9fff]+$")
@@ -25,9 +31,97 @@ _PUNCT_RE = re.compile(
 )
 
 
+def _is_decimal_dot(s: str, i: int) -> bool:
+    """True if s[i] is '.' between two ASCII digits (e.g. 68.4)."""
+    if i < 0 or i >= len(s) or s[i] != ".":
+        return False
+    return i > 0 and i + 1 < len(s) and s[i - 1].isdigit() and s[i + 1].isdigit()
+
+
 def split_sentences(text: str) -> List[str]:
-    parts = _SPLIT_RE.split(text)
-    return [p.strip() for p in parts if p.strip()]
+    """
+    切分语料为片段。规则要点：
+    - 全角 ，。 始终切分（引号内亦然），以得到纯汉字块供评测；
+    - 半角 , 同样切分；半角 . 仅在小数点（数字.数字）之外时切分；
+    - 深度 0 时遇 ：“ / :" 整段作为分界，跳过开引号，并进入引号内深度；
+    - 深度 0 遇弯开引 “：在引号前切分（如 昔日“脏臭乱”）；
+    - 遇弯闭引 ”：在引号前切分并出引号层；
+    - 段首尾去掉孤立引号与空白；
+    - 去掉仍含顿号（、）或书名号（《》）的片段。
+    """
+    if not text or not text.strip():
+        return []
+    s = text
+    n = len(s)
+    parts: List[str] = []
+    start = 0
+    depth = 0
+    i = 0
+
+    def emit_before(delimiter_at: int) -> None:
+        nonlocal start
+        seg = s[start:delimiter_at].strip()
+        if seg:
+            seg = _QUOTE_EDGE_RE.sub("", seg).strip()
+            if seg:
+                parts.append(seg)
+        start = delimiter_at + 1
+
+    while i < n:
+        c = s[i]
+
+        # 深度 0：冒号 + 弯开引，可选其后空白
+        if (
+            depth == 0
+            and c in "：:"
+            and i + 1 < n
+            and s[i + 1] == _OPEN_CQ
+        ):
+            emit_before(i)
+            j = i + 2
+            while j < n and s[j].isspace():
+                j += 1
+            start = j
+            depth = 1
+            i = j
+            continue
+
+        if c == _OPEN_CQ:
+            if depth == 0:
+                emit_before(i)
+                depth = 1
+            else:
+                depth += 1
+                start = i + 1  # 嵌套开引不进入片段正文
+            i += 1
+            continue
+
+        if c == _CLOSE_CQ:
+            emit_before(i)
+            depth = max(0, depth - 1)
+            i += 1
+            continue
+
+        if c in "，,":
+            emit_before(i)
+        elif c == "。":
+            emit_before(i)
+        elif c == "." and not _is_decimal_dot(s, i):
+            emit_before(i)
+
+        i += 1
+
+    tail = s[start:].strip()
+    if tail:
+        tail = _QUOTE_EDGE_RE.sub("", tail).strip()
+        if tail:
+            parts.append(tail)
+    return [p for p in parts if not segment_has_dunhao_or_shuminghao(p)]
+
+
+def segment_has_dunhao_or_shuminghao(s: str) -> bool:
+    """True if segment contains顿号 or CJK book title marks 《 or 》."""
+    return bool(_DUNHAO_OR_SHUMINGHAO_RE.search(s.strip()))
 
 
 def is_pure_hanzi_segment(s: str) -> bool:

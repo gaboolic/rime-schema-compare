@@ -568,7 +568,7 @@ def run_benchmark(
     raw_sents = split_sentences(text)
     timings["split_ms"] = round((time.perf_counter() - t1) * 1000, 2)
     logger.info(
-        "[分句] 按 ，,。. 切分完成，共 %d 个片段，耗时 %.2f ms",
+        "[分句] 扫描分句（，“。” 与 “” 配对；小数 . 不切；丢弃含 、或《》的片段）完成，共 %d 个片段，耗时 %.2f ms",
         len(raw_sents),
         timings["split_ms"],
     )
