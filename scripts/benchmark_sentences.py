@@ -422,9 +422,11 @@ def _format_timings_lines(timings: Dict[str, Any], indent: str = "  ") -> List[s
     ]
     for vk, tv in sorted((timings.get("vendors") or {}).items()):
         if isinstance(tv, dict):
+            so = tv.get("session_open_ms")
+            so_part = f", 开会话+选方案: {so} ms" if so is not None else ""
             lines.append(
-                f"{indent}librime [{vk}] 加载: {tv.get('load_ms', '—')} ms, "
-                f"解码: {tv.get('decode_ms', '—')} ms"
+                f"{indent}librime [{vk}] 加载: {tv.get('load_ms', '—')} ms{so_part}, "
+                f"逐句解码: {tv.get('decode_ms', '—')} ms"
             )
     w = timings.get("write_artifacts_ms")
     if w is not None:
@@ -690,7 +692,11 @@ def run_benchmark(
                         }
                     )
                 load_ms = round((time.perf_counter() - t_load0) * 1000, 2)
-                timings["vendors"][v.key] = {"load_ms": load_ms, "decode_ms": 0.0}
+                timings["vendors"][v.key] = {
+                    "load_ms": load_ms,
+                    "session_open_ms": 0.0,
+                    "decode_ms": 0.0,
+                }
                 logger.warning(
                     "[librime:加载方案 %s] 失败: user_data_dir 不可用（耗时 %.2f ms）— %s",
                     v.key,
@@ -706,48 +712,87 @@ def run_benchmark(
                 load_ms,
             )
             logger.info(
-                "[librime:解码 %s] 开始: RimeSetInput（若可用）否则 simulate_key_sequence + get_context，共 %d 句",
+                "[librime:解码 %s] 开始: 同一会话内逐句 feed_pinyin + get_context（RimeSetInput 若可用），共 %d 句",
                 v.key,
                 n_prepared,
             )
+            t_sess0 = time.perf_counter()
+            session_ok = runner.begin_decode_batch()
+            session_open_ms = round((time.perf_counter() - t_sess0) * 1000, 2)
             t_dec0 = time.perf_counter()
             done = 0
-            for slot in prepared:
-                if slot is None:
-                    continue
-                st["sentences_total"] += 1
-                res = runner.decode_pinyin(slot["pinyin"])
-                pred = res.prediction if res.ok else ""
-                gold = slot["gold"]
-                if not res.ok:
-                    st["decode_failed"] += 1
-                exact = res.ok and sentence_exact_match(norm(pred), norm(gold))
-                if exact:
-                    st["exact_matches"] += 1
-                _, cer = _accumulate_char_metrics(st, gold, pred, res.ok, norm)
+            try:
+                if not session_ok:
+                    logger.warning(
+                        "[librime:解码 %s] 无法打开会话（create_session/select_schema），本方案全部记为解码失败",
+                        v.key,
+                    )
+                    for slot in prepared:
+                        if slot is None:
+                            continue
+                        st["sentences_total"] += 1
+                        st["decode_failed"] += 1
+                        gold = slot["gold"]
+                        _, cer = _accumulate_char_metrics(st, gold, "", False, norm)
+                        rows.append(
+                            {
+                                "corpus": corpus_label,
+                                "index": slot["index"],
+                                "vendor": v.key,
+                                "gold": gold,
+                                "pinyin": slot["pinyin"],
+                                "prediction": "",
+                                "exact": False,
+                                "cer": cer,
+                                "error": "batch_session_open_failed",
+                            }
+                        )
+                        done += 1
+                else:
+                    for slot in prepared:
+                        if slot is None:
+                            continue
+                        st["sentences_total"] += 1
+                        res = runner.decode_pinyin_in_batch(slot["pinyin"])
+                        pred = res.prediction if res.ok else ""
+                        gold = slot["gold"]
+                        if not res.ok:
+                            st["decode_failed"] += 1
+                        exact = res.ok and sentence_exact_match(norm(pred), norm(gold))
+                        if exact:
+                            st["exact_matches"] += 1
+                        _, cer = _accumulate_char_metrics(st, gold, pred, res.ok, norm)
 
-                rows.append(
-                    {
-                        "corpus": corpus_label,
-                        "index": slot["index"],
-                        "vendor": v.key,
-                        "gold": gold,
-                        "pinyin": slot["pinyin"],
-                        "prediction": pred,
-                        "exact": exact,
-                        "cer": cer,
-                        "error": "" if res.ok else res.reason,
-                    }
-                )
-                done += 1
-                if progress_every and done % progress_every == 0:
-                    logger.info("[librime:解码 %s] 进度 %d / %d 句", v.key, done, n_prepared)
+                        rows.append(
+                            {
+                                "corpus": corpus_label,
+                                "index": slot["index"],
+                                "vendor": v.key,
+                                "gold": gold,
+                                "pinyin": slot["pinyin"],
+                                "prediction": pred,
+                                "exact": exact,
+                                "cer": cer,
+                                "error": "" if res.ok else res.reason,
+                            }
+                        )
+                        done += 1
+                        if progress_every and done % progress_every == 0:
+                            logger.info("[librime:解码 %s] 进度 %d / %d 句", v.key, done, n_prepared)
+            finally:
+                runner.end_decode_batch()
+
             decode_ms = round((time.perf_counter() - t_dec0) * 1000, 2)
-            timings["vendors"][v.key] = {"load_ms": load_ms, "decode_ms": decode_ms}
+            timings["vendors"][v.key] = {
+                "load_ms": load_ms,
+                "session_open_ms": session_open_ms,
+                "decode_ms": decode_ms,
+            }
             logger.info(
-                "[librime:解码 %s] 完成，本方案 %d 句，耗时 %.2f ms",
+                "[librime:解码 %s] 完成，本方案 %d 句 | 开会话+选方案 %.2f ms | 逐句解码 %.2f ms",
                 v.key,
                 done,
+                session_open_ms,
                 decode_ms,
             )
     finally:
