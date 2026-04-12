@@ -38,20 +38,13 @@ def _is_decimal_dot(s: str, i: int) -> bool:
     return i > 0 and i + 1 < len(s) and s[i - 1].isdigit() and s[i + 1].isdigit()
 
 
-def split_sentences(text: str) -> List[str]:
+def _split_line_by_punctuation(line: str) -> List[str]:
     """
-    切分语料为片段。规则要点：
-    - 全角 ，。 始终切分（引号内亦然），以得到纯汉字块供评测；
-    - 半角 , 同样切分；半角 . 仅在小数点（数字.数字）之外时切分；
-    - 深度 0 时遇 ：“ / :" 整段作为分界，跳过开引号，并进入引号内深度；
-    - 深度 0 遇弯开引 “：在引号前切分（如 昔日“脏臭乱”）；
-    - 遇弯闭引 ”：在引号前切分并出引号层；
-    - 段首尾去掉孤立引号与空白；
-    - 去掉仍含顿号（、）或书名号（《》）的片段。
+    对单行文本按引号深度与 ，。,. 切分（不含换行；换行由 split_sentences 先处理）。
     """
-    if not text or not text.strip():
+    s = line
+    if not s:
         return []
-    s = text
     n = len(s)
     parts: List[str] = []
     start = 0
@@ -116,7 +109,30 @@ def split_sentences(text: str) -> List[str]:
         tail = _QUOTE_EDGE_RE.sub("", tail).strip()
         if tail:
             parts.append(tail)
-    return [p for p in parts if not segment_has_dunhao_or_shuminghao(p)]
+    return parts
+
+
+def split_sentences(text: str) -> List[str]:
+    """
+    切分语料为片段。规则要点：
+    - **先按换行**（\\n / \\r\\n）切成行，空行丢弃；再对每行做下列切分；
+    - 全角 ，。 始终切分（引号内亦然），以得到纯汉字块供评测；
+    - 半角 , 同样切分；半角 . 仅在小数点（数字.数字）之外时切分；
+    - 深度 0 时遇 ：“ / :" 整段作为分界，跳过开引号，并进入引号内深度；
+    - 深度 0 遇弯开引 “：在引号前切分（如 昔日“脏臭乱”）；
+    - 遇弯闭引 ”：在引号前切分并出引号层；
+    - 段首尾去掉孤立引号与空白；
+    - 去掉仍含顿号（、）或书名号（《》）的片段。
+    """
+    if not text or not text.strip():
+        return []
+    merged: List[str] = []
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        merged.extend(_split_line_by_punctuation(line))
+    return [p for p in merged if not segment_has_dunhao_or_shuminghao(p)]
 
 
 def segment_has_dunhao_or_shuminghao(s: str) -> bool:
