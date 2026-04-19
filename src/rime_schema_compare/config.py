@@ -49,14 +49,31 @@ DEFAULT_VENDORS: List[VendorConfig] = [
     VendorConfig("rime_ice", "vendor/rime-ice", "rime_ice"),
     VendorConfig("rime_frost", "vendor/rime-frost", "rime_frost"),
     VendorConfig("wanxiang", "vendor/rime_wanxiang", "wanxiang"),
+    # VendorConfig("rime_wanxiang_with_gram", "vendor/rime_wanxiang_with_gram", "wanxiang"),
     VendorConfig(
-        "rime_wubi_sentence",
+        "rime_wubi_sentens_wubi86",
         "vendor/rime-wubi-sentence",
         "wubi86",
         input_mode="shape_code_prefix",
         input_dict_rel_path="program/wubi86.dict.yaml",
         input_code_prefix_len=2,
     ),
+    # VendorConfig(
+    #     "rime_wubi_sentens_tiger",
+    #     "vendor/rime-wubi-sentence",
+    #     "tiger",
+    #     input_mode="shape_code_prefix",
+    #     input_dict_rel_path="program/tiger.dict.yaml",
+    #     input_code_prefix_len=2,
+    # ),
+    # VendorConfig(
+    #     "rime_wubi_sentens_ziyuan",
+    #     "vendor/rime-wubi-sentence",
+    #     "ziyuan",
+    #     input_mode="shape_code_prefix",
+    #     input_dict_rel_path="cn_dicts_ziyuan/8105.dict.yaml",
+    #     input_code_prefix_len=2,
+    # ),
 ]
 
 

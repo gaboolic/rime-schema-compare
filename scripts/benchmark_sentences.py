@@ -1094,7 +1094,7 @@ def main() -> None:
         "--vendors",
         nargs="*",
         default=None,
-        help="Subset of vendor keys: mingyuepinyin rime_ice rime_frost wanxiang rime_wubi_sentence",
+        help="Subset of vendor keys: mingyuepinyin rime_ice rime_frost wanxiang rime_wanxiang_with_gram rime_wubi_sentens_wubi86 rime_wubi_sentens_tiger rime_wubi_sentens_ziyuan",
     )
     p.add_argument("--progress-every", type=int, default=50, help="Print progress every N raw segments (0=off)")
     p.add_argument(

@@ -908,11 +908,24 @@ class RimeDllWrapper:
                     print("   调试: get_context 函数返回 False")
                 return None
             
-            # 如果 candidates 指针为 NULL，尝试使用候选词列表迭代器
+            candidates_ptr_value = 0
+            if context.menu.candidates:
+                try:
+                    candidates_ptr_value = ctypes.cast(context.menu.candidates, ctypes.c_void_p).value or 0
+                except Exception:
+                    candidates_ptr_value = 0
+
+            # 某些方案会返回非空但明显无效的候选指针（如 0x1）；此时改走迭代器，避免直接解引用崩溃。
+            invalid_candidates_ptr = candidates_ptr_value < 4096
+
+            # 如果 candidates 指针为空或明显无效，尝试使用候选词列表迭代器
             candidates = []  # 初始化为空列表
-            if not context.menu.candidates or ctypes.cast(context.menu.candidates, ctypes.c_void_p).value == 0:
+            if invalid_candidates_ptr:
                 if debug_mode:
-                    print("   调试: candidates 指针为 NULL，尝试使用候选词列表迭代器")
+                    print(
+                        f"   调试: candidates 指针无效 ({hex(candidates_ptr_value) if candidates_ptr_value else 'NULL'})，"
+                        " 尝试使用候选词列表迭代器"
+                    )
                 candidates = self._get_candidates_via_iterator(session_id, debug_mode)
                 if candidates:
                     if debug_mode:
@@ -936,7 +949,10 @@ class RimeDllWrapper:
             if debug_mode:
                 print(f"   调试: composition.length = {context.composition.length}")
                 print(f"   调试: menu.num_candidates = {context.menu.num_candidates}")
-                print(f"   调试: menu.candidates 指针 = {hex(context.menu.candidates) if context.menu.candidates else 'None'}")
+                print(
+                    f"   调试: menu.candidates 指针 = "
+                    f"{hex(candidates_ptr_value) if candidates_ptr_value else 'None'}"
+                )
             
             # 提取候选词（如果还没有通过迭代器获取）
             if not use_iterator_candidates:
@@ -947,13 +963,14 @@ class RimeDllWrapper:
                 # 调试：检查条件
                 if debug_mode:
                     print(f"   调试: candidates_ptr = {candidates_ptr}")
-                    print(f"   调试: candidates_ptr is not None = {candidates_ptr is not None}")
-                    print(f"   调试: candidates_ptr != 0 = {candidates_ptr != 0 if candidates_ptr is not None else 'N/A'}")
+                    print(f"   调试: candidates_ptr_value = {hex(candidates_ptr_value) if candidates_ptr_value else 'None'}")
                     print(f"   调试: num_candidates > 0 = {num_candidates > 0}")
                 
-                has_candidates = (candidates_ptr is not None and 
-                                candidates_ptr != 0 and 
-                                num_candidates > 0)
+                has_candidates = (
+                    candidates_ptr is not None
+                    and candidates_ptr_value >= 4096
+                    and num_candidates > 0
+                )
                 
                 if has_candidates:
                     if debug_mode:
