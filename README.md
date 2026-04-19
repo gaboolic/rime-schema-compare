@@ -2,6 +2,9 @@
 
 在 **Windows** 上用 **Python + librime**（`rime.dll`，例如小狼毫自带）对比多套 Rime 词库方案的 **整句解码准确率**。
 
+## 最新评测结果 
+[查看最新评测结果](report/latest.md)
+
 ## 各套方案说明
 
 默认参与对比的方案在 `src/rime_schema_compare/config.py` 的 `DEFAULT_VENDORS` 中定义：每个条目包含 **vendor 键**（命令行与报表列名）、**子目录**、以及 **主 schema_id**（librime 里选用的方案 ID）。

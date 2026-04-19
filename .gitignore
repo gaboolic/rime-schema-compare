@@ -217,3 +217,7 @@ vendor/*/*.userdb/
 vendor/*/*.custom.yaml/
 vendor/*/installation.yaml/
 vendor/*/user.yaml/
+vendor/mingyuepinyin/installation.yaml
+vendor/mingyuepinyin/luna_pinyin_simp.custom.yaml
+.gitignore
+vendor/mingyuepinyin/user.yaml

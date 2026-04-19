@@ -1,6 +1,7 @@
 param(
     [string]$ArtifactsDir = "artifacts",
     [string]$ReportDir = "report",
+    [string]$RimeDllPath = "lib/rime.dll",
     [string]$DateFormat = "yyyy-MM-dd",
     [int]$ProgressEvery = 0
 )
@@ -65,15 +66,26 @@ function Get-SubmoduleSnapshots {
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $artifactsPath = Join-Path $repoRoot $ArtifactsDir
 $reportPath = Join-Path $repoRoot $ReportDir
+$resolvedRimeDllPath = if ([System.IO.Path]::IsPathRooted($RimeDllPath)) {
+    $RimeDllPath
+}
+else {
+    Join-Path $repoRoot $RimeDllPath
+}
 
 New-Item -ItemType Directory -Path $artifactsPath -Force | Out-Null
 New-Item -ItemType Directory -Path $reportPath -Force | Out-Null
 
+if (-not (Test-Path $resolvedRimeDllPath)) {
+    throw "rime.dll not found: $resolvedRimeDllPath"
+}
+
 $env:PYTHONPATH = Join-Path $repoRoot "src"
+$env:RIME_DLL = $resolvedRimeDllPath
 
 Push-Location $repoRoot
 try {
-    & python "scripts/benchmark_sentences.py" --progress-every $ProgressEvery --out-dir $artifactsPath
+    & python "scripts/benchmark_sentences.py" --progress-every $ProgressEvery --out-dir $artifactsPath --rime-dll $resolvedRimeDllPath
     if ($LASTEXITCODE -ne 0) {
         throw "benchmark_sentences.py exited with code $LASTEXITCODE"
     }
