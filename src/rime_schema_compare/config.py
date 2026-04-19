@@ -48,6 +48,7 @@ DEFAULT_VENDORS: List[VendorConfig] = [
     VendorConfig("mingyuepinyin", "vendor/mingyuepinyin", "luna_pinyin_simp"),
     VendorConfig("rime_ice", "vendor/rime-ice", "rime_ice"),
     VendorConfig("rime_frost", "vendor/rime-frost", "rime_frost"),
+    # VendorConfig("rime_frost_with_gram", "vendor/rime-frost_with_gram", "rime_frost"),
     VendorConfig("wanxiang", "vendor/rime_wanxiang", "wanxiang"),
     # VendorConfig("rime_wanxiang_with_gram", "vendor/rime_wanxiang_with_gram", "wanxiang"),
     VendorConfig(

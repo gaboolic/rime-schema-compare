@@ -12,8 +12,9 @@
 | Vendor 键 | 目录 | 主 schema | 说明 |
 |-----------|------|-----------|------|
 | `mingyuepinyin` | `vendor/mingyuepinyin` | `luna_pinyin_simp` | 明月拼音（简体全拼），与 Rime 自带 Luna 系方案同源的一类发行 |
-| `rime_ice` | `vendor/rime-ice` | `rime_ice` | 薄荷方案（Rime 冰 / rime-ice） |
-| `rime_frost` | `vendor/rime-frost` | `rime_frost` | 雾凇拼音（rime-frost） |
+| `rime_ice` | `vendor/rime-ice` | `rime_ice` | 雾凇拼音 |
+| `rime_frost` | `vendor/rime-frost` | `rime_frost` | 白霜拼音（rime-frost） |
+| `rime_frost_with_gram` | `vendor/rime-frost_with_gram` | `rime_frost` | 带 `wanxiang-lts-zh-hans` ngram 模型的白霜拼音；其余配置与 `vendor/rime-frost` 保持一致 |
 | `wanxiang` | `vendor/rime_wanxiang` | `wanxiang` | 万象拼音（子模块跟踪分支 `wanxiang`，见 [.gitmodules](.gitmodules)） |
 | `rime_wanxiang_with_gram` | `vendor/rime_wanxiang_with_gram` | `wanxiang` | 带 `ngrams` 模型文件的万象拼音；其余配置与 `vendor/rime_wanxiang` 保持一致 |
 | `rime_wubi_sentens_wubi86` | `vendor/rime-wubi-sentence` | `wubi86` | `gaboolic/rime-wubi-sentence` 的五笔整句 `wubi86` 方案；输入串按单字形码表取前 2 码连续拼接 |
