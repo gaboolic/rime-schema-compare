@@ -8,3 +8,6 @@
 	path = vendor/rime_wanxiang
 	url = https://github.com/amzxyz/rime_wanxiang
 	branch = wanxiang
+[submodule "vendor/rime-wubi-sentence"]
+	path = vendor/rime-wubi-sentence
+	url = https://github.com/gaboolic/rime-wubi-sentence
