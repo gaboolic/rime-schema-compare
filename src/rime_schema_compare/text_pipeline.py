@@ -1,9 +1,11 @@
-"""Split corpus text and build pinyin strings for Rime."""
+"""Split corpus text and build benchmark input strings for Rime."""
 
 from __future__ import annotations
 
 import re
-from typing import List
+from functools import lru_cache
+from pathlib import Path
+from typing import Dict, List
 
 from pypinyin import Style, lazy_pinyin
 
@@ -166,3 +168,64 @@ def sentence_to_continuous_pinyin(s: str) -> str:
         return ""
     syllables = lazy_pinyin(hz, style=Style.NORMAL, errors="ignore")
     return "".join(syllables).lower()
+
+
+_CODE_LETTERS_RE = re.compile(r"[A-Za-z]+")
+
+
+def _letters_only(s: str) -> str:
+    return "".join(_CODE_LETTERS_RE.findall(s or "")).lower()
+
+
+def _pick_shape_code_prefix(code: str, stem: str, prefix_len: int) -> str:
+    for raw in (stem, code):
+        letters = _letters_only(raw)
+        if len(letters) >= prefix_len:
+            return letters[:prefix_len]
+    for raw in (stem, code):
+        letters = _letters_only(raw)
+        if letters:
+            return letters[:prefix_len]
+    return ""
+
+
+@lru_cache(maxsize=None)
+def load_single_char_shape_code_prefixes(dict_path_str: str, prefix_len: int = 2) -> Dict[str, str]:
+    path = Path(dict_path_str)
+    mapping: Dict[str, str] = {}
+    in_table = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not in_table:
+            if stripped == "...":
+                in_table = True
+            continue
+        if not stripped or stripped.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        text = parts[0].strip()
+        if len(text) != 1 or not _HANZI_ONLY_RE.fullmatch(text):
+            continue
+        code = parts[1].strip()
+        stem = parts[3].strip() if len(parts) > 3 else ""
+        prefix = _pick_shape_code_prefix(code, stem, prefix_len)
+        if prefix and text not in mapping:
+            mapping[text] = prefix
+    return mapping
+
+
+def sentence_to_shape_code_prefix_input(s: str, dict_path: Path, prefix_len: int = 2) -> str:
+    """Concatenate each Hanzi's shape-code prefix; return empty string if any Hanzi is missing."""
+    hz = extract_hanzi(s)
+    if not hz:
+        return ""
+    mapping = load_single_char_shape_code_prefixes(str(dict_path.resolve()), prefix_len)
+    parts: List[str] = []
+    for ch in hz:
+        prefix = mapping.get(ch, "")
+        if not prefix:
+            return ""
+        parts.append(prefix)
+    return "".join(parts)

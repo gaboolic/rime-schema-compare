@@ -3,12 +3,12 @@
 """
 Time decode with one Rime session: begin_decode_batch → repeat feed+get_context → end_decode_batch.
 
-Compares per-sentence cost vs one-shot decode_pinyin (new session each time).
+Compares per-sentence cost vs one-shot decode_input (new session each time).
 
 Usage (repo root):
   $env:PYTHONUTF8='1'
   python scripts/benchmark_one_sentence.py --vendor rime_frost \\
-    --pinyin "xin xing chan ye de fa zhan" --repeat 30
+    --input "xinxingchanyedefazhan" --repeat 30
 """
 
 from __future__ import annotations
@@ -39,10 +39,14 @@ def pick_vendor(key: str) -> VendorConfig:
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--vendor", default="rime_frost", help="Vendor key (see config.DEFAULT_VENDORS)")
-    p.add_argument("--pinyin", required=True, help="Full pinyin string (spaces as in benchmark)")
+    p.add_argument("--input", default="", help="Raw input string fed to Rime")
+    p.add_argument("--pinyin", default="", help="Backward-compatible alias of --input")
     p.add_argument("--repeat", type=int, default=30, help="Iterations of feed+get_context on same session")
     p.add_argument("--rime-dll", default="", help="Override rime.dll path")
     args = p.parse_args()
+    raw_input = args.input or args.pinyin
+    if not raw_input:
+        raise SystemExit("Need --input (or legacy --pinyin)")
 
     dll = resolve_rime_dll(args.rime_dll or None)
     vendor = pick_vendor(args.vendor)
@@ -57,8 +61,8 @@ def main() -> int:
         schema_id = runner._schema_id or ""
         print(f"dll: {dll}")
         print(f"vendor: {vendor.key} schema={schema_id}")
-        print(f"pinyin ({len(args.pinyin)} chars): {args.pinyin[:80]}{'…' if len(args.pinyin) > 80 else ''}")
-        print(f"pinyin_feed_mode: {runner.pinyin_feed_mode}")
+        print(f"input ({len(raw_input)} chars): {raw_input[:80]}{'…' if len(raw_input) > 80 else ''}")
+        print(f"input_feed_mode: {runner.input_feed_mode}")
         print(f"switch_distro (cold): {load_ms:.2f} ms")
         print()
 
@@ -77,7 +81,7 @@ def main() -> int:
         for i in range(args.repeat):
             parts: list[float] = []
             t = time.perf_counter()
-            ok_feed = rime.feed_pinyin(session_id, args.pinyin)
+            ok_feed = rime.feed_input(session_id, raw_input)
             parts.append((time.perf_counter() - t) * 1000.0)
 
             t = time.perf_counter()
@@ -108,11 +112,11 @@ def main() -> int:
             )
 
         t = time.perf_counter()
-        r = runner.decode_pinyin(args.pinyin)
+        r = runner.decode_input(raw_input)
         one_shot_ms = (time.perf_counter() - t) * 1000.0
         print()
         print(
-            f"decode_pinyin() one-shot (new session each call): {one_shot_ms:.3f} ms  "
+            f"decode_input() one-shot (new session each call): {one_shot_ms:.3f} ms  "
             f"ok={r.ok} text[:40]={r.prediction[:40]!r}"
         )
         mean_fg = statistics.mean([r[2] for r in rows])

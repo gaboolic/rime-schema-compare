@@ -28,18 +28,35 @@ class VendorConfig:
     key: str
     rel_path: str
     schema_id: str
+    input_mode: str = "pinyin"
+    input_dict_rel_path: Optional[str] = None
+    input_code_prefix_len: int = 2
 
     def data_dir(self, root: Optional[Path] = None) -> Path:
         base = root or repo_root()
         return (base / self.rel_path).resolve()
 
+    def input_dict_path(self, root: Optional[Path] = None) -> Optional[Path]:
+        if not self.input_dict_rel_path:
+            return None
+        base = root or repo_root()
+        return (base / self.rel_path / self.input_dict_rel_path).resolve()
 
-# Default schema ids match each distro's main full-pinyin schema file names.
+
+# Default schema ids match each distro's primary benchmark schema.
 DEFAULT_VENDORS: List[VendorConfig] = [
     VendorConfig("mingyuepinyin", "vendor/mingyuepinyin", "luna_pinyin_simp"),
     VendorConfig("rime_ice", "vendor/rime-ice", "rime_ice"),
     VendorConfig("rime_frost", "vendor/rime-frost", "rime_frost"),
     VendorConfig("wanxiang", "vendor/rime_wanxiang", "wanxiang"),
+    VendorConfig(
+        "rime_wubi_sentence",
+        "vendor/rime-wubi-sentence",
+        "wubi86",
+        input_mode="shape_code_prefix",
+        input_dict_rel_path="program/wubi86.dict.yaml",
+        input_code_prefix_len=2,
+    ),
 ]
 
 

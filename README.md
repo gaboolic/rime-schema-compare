@@ -15,6 +15,7 @@
 | `rime_ice` | `vendor/rime-ice` | `rime_ice` | 薄荷方案（Rime 冰 / rime-ice） |
 | `rime_frost` | `vendor/rime-frost` | `rime_frost` | 雾凇拼音（rime-frost） |
 | `wanxiang` | `vendor/rime_wanxiang` | `wanxiang` | 万象拼音（子模块跟踪分支 `wanxiang`，见 [.gitmodules](.gitmodules)） |
+| `rime_wubi_sentence` | `vendor/rime-wubi-sentence` | `wubi86` | `gaboolic/rime-wubi-sentence` 的五笔整句方案；输入串按单字形码表取前 2 码连续拼接 |
 
 各方案的实际 YAML、编译产物与用户状态都放在各自的 `vendor/...` 目录下；所有方案共用的只读资源放在 [`vendor/data`](vendor/data)（不存在会自动创建）。需要让所有方案看到同一套程序级配置或补丁时，把文件放在 `vendor/data`（例如从小狼毫安装目录复制或做符号链接）。
 
@@ -51,15 +52,15 @@ pip install -r requirements.txt
 
 | 文件 | 内容 |
 |------|------|
-| `*_*.csv` | 宽表：每句一行，`gold` / `pinyin` 后接各方案的句子是否判对、单句字级准确率、预测与错误信息等 |
-| `*_long.csv` | 窄表：每句 × 每方案一行；行序为先方案后句子 |
+| `*_*.csv` | 宽表：每句一行，`gold` 后接各方案各自的 `*_input` / 句子是否判对 / 单句字级准确率 / 预测 / 错误信息 |
+| `*_long.csv` | 窄表：每句 × 每方案一行；含该方案实际输入串 `input`，行序为先方案后句子 |
 | `*_long_by_sentence.csv` | 同上结构；行序为先句子后方案 |
 | `*_scheme_compare.txt` | 各方案**独有判对**及相对其它方案的**多判对**句子列表 |
 | `*_summary.csv` | 按语料 × 方案汇总 |
 | `*_report.txt` | 中文摘要：句子正确率、文字正确率等 |
 | `*.json` | 完整 JSON（含窄表级 `per_sentence`） |
 
-进度与阶段日志在 **stderr**（简体中文 Windows 控制台多为 GBK，避免乱码勿强行把 stderr 设为 UTF-8）。阶段前缀包括：`[启动]`、`[语料列表]`、`[分句]`、`[pypinyin]`、`[librime:加载方案 x]`、`[librime:解码 x]`、`[汇总]`、`[写出结果]` 等。若使用 UTF-8 终端（如 `chcp 65001`），stderr 中的中文通常也能正常显示。
+进度与阶段日志在 **stderr**（简体中文 Windows 控制台多为 GBK，避免乱码勿强行把 stderr 设为 UTF-8）。阶段前缀包括：`[启动]`、`[语料列表]`、`[分句]`、`[预过滤]`、`[输入串 x]`、`[librime:加载方案 x]`、`[librime:解码 x]`、`[汇总]`、`[写出结果]` 等。若使用 UTF-8 终端（如 `chcp 65001`），stderr 中的中文通常也能正常显示。
 
 ## 评测细节
 
@@ -77,14 +78,15 @@ pip install -r requirements.txt
 - 去掉段首尾的孤立引号与空白；**含顿号 `、`或书名号 `《》《`** 的片段 **整段丢弃**（不参与评测）。
 - 切分后的片段还须满足下面「参与评测」的过滤条件。
 
-### 哪些片段会进入「金句 + 拼音」流水线
+### 哪些片段会进入「金句 + 输入串」流水线
 
 与 `benchmark_sentences.py` 中准备阶段一致：
 
 - 片段内 **不得** 含 ASCII 数字或拉丁字母。
 - 去掉空白后须为 **纯 CJK 统一表意文字**（`U+4E00`–`U+9FFF`），不含符号或其它文字。
 - 纯汉字片段长度须 **不少于 `MIN_EVAL_HANZI_CHARS`（默认 5）**。
-- 由 `pypinyin` 的 `lazy_pinyin(..., Style.NORMAL)` 生成 **连续小写全拼** 作为输入；仅保留汉字部分参与转写。
+- 拼音类方案由 `pypinyin` 的 `lazy_pinyin(..., Style.NORMAL)` 生成 **连续小写全拼** 作为输入。
+- `rime_wubi_sentence` 则读取 `vendor/rime-wubi-sentence/program/wubi86.dict.yaml` 的单字码表，对每个汉字取对应形码的**前 2 个字母**并串接成输入；若句中任一字缺码，则该句对该方案跳过。
 
 ### 加载方案（librime 目录）
 
@@ -97,7 +99,7 @@ pip install -r requirements.txt
 
 ### 选择方案（schema）
 
-每个 vendor 对应唯一的 **`schema_id`**（见上表）。评测在加载该 vendor 后调用 **`select_schema(session_id, schema_id)`** 打开批量解码会话（`begin_decode_batch`），整段语料在同一 session 内逐句 `feed_pinyin`。
+每个 vendor 对应唯一的 **`schema_id`**（见上表）。评测在加载该 vendor 后调用 **`select_schema(session_id, schema_id)`** 打开批量解码会话（`begin_decode_batch`），整段语料在同一 session 内逐句 `feed_input`。
 
 命令行 **`--vendors`** 只决定 **跑哪些 vendor**，不改变各 vendor 自带的 `schema_id`；若要换主方案，需改 `config.py` 中对应 `VendorConfig.schema_id`。
 

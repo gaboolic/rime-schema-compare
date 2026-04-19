@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Benchmark whole-sentence decoding: split corpus → pinyin → Rime → metrics.
+Benchmark whole-sentence decoding: split corpus → vendor input string → Rime → metrics.
 
 Run from repository root, after `pip install -r requirements.txt` and submodule init:
 
@@ -54,6 +54,7 @@ from rime_schema_compare.text_pipeline import (
     is_pure_hanzi_segment,
     segment_has_ascii_digit_or_letter,
     sentence_to_continuous_pinyin,
+    sentence_to_shape_code_prefix_input,
     split_sentences,
 )
 
@@ -80,6 +81,27 @@ def _pick_vendors(keys: Optional[List[str]]) -> List[VendorConfig]:
         missing = keyset - found
         raise SystemExit(f"Unknown vendor key(s): {sorted(missing)}. Known: {[v.key for v in DEFAULT_VENDORS]}")
     return out
+
+
+def _vendor_input_label(vendor: VendorConfig) -> str:
+    if vendor.input_mode == "pinyin":
+        return "拼音全拼"
+    if vendor.input_mode == "shape_code_prefix":
+        return f"形码前 {vendor.input_code_prefix_len} 码"
+    return vendor.input_mode
+
+
+def _build_vendor_input(vendor: VendorConfig, text: str, root: Path) -> str:
+    if vendor.input_mode == "pinyin":
+        return sentence_to_continuous_pinyin(text)
+    if vendor.input_mode == "shape_code_prefix":
+        dict_path = vendor.input_dict_path(root)
+        if dict_path is None:
+            raise FileNotFoundError(f"{vendor.key} 未配置 input_dict_rel_path")
+        if not dict_path.is_file():
+            raise FileNotFoundError(f"{vendor.key} 形码字典不存在: {dict_path}")
+        return sentence_to_shape_code_prefix_input(text, dict_path, vendor.input_code_prefix_len)
+    raise ValueError(f"Unsupported input_mode for {vendor.key}: {vendor.input_mode}")
 
 
 def default_corpus_files(root: Path) -> List[Tuple[Path, str]]:
@@ -206,10 +228,11 @@ def _per_sentence_char_accuracy_percent(cer: Optional[float]) -> Optional[float]
 
 
 def _sentence_grouped_fieldnames(vendors: List[VendorConfig]) -> List[str]:
-    fn: List[str] = ["corpus", "index", "gold", "pinyin"]
+    fn: List[str] = ["corpus", "index", "gold"]
     for v in vendors:
         fn.extend(
             [
+                f"{v.key}_input",
                 f"{v.key}_sentence_correct",
                 f"{v.key}_character_accuracy_percent",
                 f"{v.key}_prediction",
@@ -224,7 +247,7 @@ _LONG_CSV_FIELDS = (
     "index",
     "vendor",
     "gold",
-    "pinyin",
+    "input",
     "prediction",
     "exact",
     "cer",
@@ -240,14 +263,14 @@ def _build_long_rows_by_sentence(
     order: List[Tuple[Any, ...]] = []
     seen: Set[Tuple[Any, ...]] = set()
     for row in per_sentence:
-        k = (row["corpus"], row["index"], row["gold"], row["pinyin"])
+        k = (row["corpus"], row["index"], row["gold"])
         if k not in seen:
             seen.add(k)
             order.append(k)
 
     by_key_vendor: Dict[Tuple[Tuple[Any, ...], str], Dict[str, Any]] = {}
     for row in per_sentence:
-        k = (row["corpus"], row["index"], row["gold"], row["pinyin"])
+        k = (row["corpus"], row["index"], row["gold"])
         by_key_vendor[(k, row["vendor"])] = row
 
     out: List[Dict[str, Any]] = []
@@ -282,14 +305,14 @@ def _exact_map_by_sentence(
     order: List[Tuple[Any, ...]] = []
     seen: Set[Tuple[Any, ...]] = set()
     for row in per_sentence:
-        k = (row["corpus"], row["index"], row["gold"], row["pinyin"])
+        k = (row["corpus"], row["index"], row["gold"])
         if k not in seen:
             seen.add(k)
             order.append(k)
     want = {v.key for v in vendors}
     by_key: Dict[Tuple[Any, ...], Dict[str, bool]] = {k: {vk: False for vk in want} for k in order}
     for row in per_sentence:
-        k = (row["corpus"], row["index"], row["gold"], row["pinyin"])
+        k = (row["corpus"], row["index"], row["gold"])
         vk = row["vendor"]
         if vk in want:
             by_key[k][vk] = bool(row.get("exact"))
@@ -334,7 +357,7 @@ def _write_scheme_compare_txt(
             f"· 仅本方案判对（其余 {len(others)} 个方案均未判对）: {len(exclusive)} 句"
         )
         if exclusive:
-            for corpus, idx, gold, _py in exclusive:
+            for corpus, idx, gold in exclusive:
                 lines.append(f"    [{corpus} #{idx}] {gold}")
         else:
             lines.append("    （无）")
@@ -343,7 +366,7 @@ def _write_scheme_compare_txt(
             wins = [k for k in order if by_key[k].get(vk) and not by_key[k].get(o)]
             lines.append(f"· 相对 [{o}] 多判对（本对、对方错）: {len(wins)} 句")
             if wins:
-                for corpus, idx, gold, _py in wins:
+                for corpus, idx, gold in wins:
                     lines.append(f"    [{corpus} #{idx}] {gold}")
             else:
                 lines.append("    （无）")
@@ -356,11 +379,11 @@ def _build_sentence_grouped_rows(
     per_sentence: List[Dict[str, Any]],
     vendors: List[VendorConfig],
 ) -> List[Dict[str, Any]]:
-    """One row per (corpus, index, gold, pinyin); each vendor gets correct / char% / prediction / error columns."""
+    """One row per (corpus, index, gold); each vendor gets input / correct / char% / prediction / error columns."""
     order: List[Tuple[Any, ...]] = []
     seen: Set[Tuple[Any, ...]] = set()
     for row in per_sentence:
-        k = (row["corpus"], row["index"], row["gold"], row["pinyin"])
+        k = (row["corpus"], row["index"], row["gold"])
         if k not in seen:
             seen.add(k)
             order.append(k)
@@ -369,13 +392,14 @@ def _build_sentence_grouped_rows(
     groups: Dict[Tuple[Any, ...], Dict[str, Any]] = {}
     for k in order:
         d: Dict[str, Any] = {fn: "" for fn in fieldnames}
-        d["corpus"], d["index"], d["gold"], d["pinyin"] = k[0], k[1], k[2], k[3]
+        d["corpus"], d["index"], d["gold"] = k[0], k[1], k[2]
         groups[k] = d
 
     for row in per_sentence:
-        k = (row["corpus"], row["index"], row["gold"], row["pinyin"])
+        k = (row["corpus"], row["index"], row["gold"])
         g = groups[k]
         vk = row["vendor"]
+        g[f"{vk}_input"] = row.get("input", "") or ""
         g[f"{vk}_sentence_correct"] = "1" if row.get("exact") else "0"
         cer = row.get("cer")
         cer_f = float(cer) if isinstance(cer, (int, float)) else None
@@ -419,14 +443,15 @@ def _format_timings_lines(timings: Dict[str, Any], indent: str = "  ") -> List[s
     lines: List[str] = [
         f"{indent}读取文件: {timings.get('read_text_ms', '—')} ms",
         f"{indent}分句: {timings.get('split_ms', '—')} ms",
-        f"{indent}pypinyin: {timings.get('pypinyin_ms', '—')} ms",
+        f"{indent}预过滤: {timings.get('prepare_segments_ms', '—')} ms",
     ]
     for vk, tv in sorted((timings.get("vendors") or {}).items()):
         if isinstance(tv, dict):
+            input_part = f"输入串: {tv.get('input_ms', '—')} ms, " if tv.get("input_ms") is not None else ""
             so = tv.get("session_open_ms")
             so_part = f", 开会话+选方案: {so} ms" if so is not None else ""
             lines.append(
-                f"{indent}librime [{vk}] 加载: {tv.get('load_ms', '—')} ms{so_part}, "
+                f"{indent}[{vk}] {input_part}librime 加载: {tv.get('load_ms', '—')} ms{so_part}, "
                 f"逐句解码: {tv.get('decode_ms', '—')} ms"
             )
     w = timings.get("write_artifacts_ms")
@@ -504,6 +529,7 @@ def _write_report_txt(
         f"{MIN_EVAL_HANZI_CHARS} 字的片段参与评测；其它片段已过滤。"
         "句子正确率 = 归一化后预测与金句完全一致的比例；"
         "文字正确率 = 全语料 (归一化后总字数−总编辑距离)/归一化后总字数。"
+        "输入串按各 vendor 自身配置生成，可能是连续拼音，也可能是形码前缀串。"
     )
     path.write_text("\n".join(lines), encoding="utf-8")
 
@@ -512,7 +538,7 @@ def _aggregate_summaries(per_corpus: Dict[str, Dict[str, Any]], vendors: List[Ve
     keys = (
         "sentences_total",
         "skipped_no_hanzi",
-        "skipped_no_pinyin",
+        "skipped_no_input",
         "skipped_mixed_content",
         "skipped_too_short",
         "decode_failed",
@@ -585,7 +611,7 @@ def run_benchmark(
         stats[v.key] = {
             "sentences_total": 0,
             "skipped_no_hanzi": 0,
-            "skipped_no_pinyin": 0,
+            "skipped_no_input": 0,
             "skipped_mixed_content": 0,
             "skipped_too_short": 0,
             "decode_failed": 0,
@@ -597,63 +623,55 @@ def run_benchmark(
         }
 
     logger.info(
-        "[pypinyin] 开始: 纯汉字、无 ASCII 数字/字母、至少 %d 字；extract_hanzi + lazy_pinyin(Style.NORMAL)",
+        "[预过滤] 开始: 纯汉字、无 ASCII 数字/字母、至少 %d 字",
         MIN_EVAL_HANZI_CHARS,
     )
-    t_py0 = time.perf_counter()
-    prepared: List[Optional[Dict[str, Any]]] = []
+    t_prep0 = time.perf_counter()
+    prepared_base: List[Optional[Dict[str, Any]]] = []
     for i, seg in enumerate(raw_sents):
         piece = seg.strip()
         if not piece:
-            prepared.append(None)
+            prepared_base.append(None)
             continue
         if segment_has_ascii_digit_or_letter(piece):
-            prepared.append(None)
+            prepared_base.append(None)
             for v in vendors:
                 stats[v.key]["skipped_mixed_content"] += 1
             continue
         if not is_pure_hanzi_segment(piece):
-            prepared.append(None)
+            prepared_base.append(None)
             for v in vendors:
                 stats[v.key]["skipped_mixed_content"] += 1
             continue
         if len(piece) < MIN_EVAL_HANZI_CHARS:
-            prepared.append(None)
+            prepared_base.append(None)
             for v in vendors:
                 stats[v.key]["skipped_too_short"] += 1
             continue
         gold = extract_hanzi(piece)
         if not gold:
-            prepared.append(None)
+            prepared_base.append(None)
             for v in vendors:
                 stats[v.key]["skipped_no_hanzi"] += 1
             continue
-        py = sentence_to_continuous_pinyin(piece)
-        if not py:
-            prepared.append(None)
-            for v in vendors:
-                stats[v.key]["skipped_no_pinyin"] += 1
-            continue
-        prepared.append({"index": i, "gold": gold, "pinyin": py})
+        prepared_base.append({"index": i, "text": piece, "gold": gold})
 
-    timings["pypinyin_ms"] = round((time.perf_counter() - t_py0) * 1000, 2)
-    n_prepared = sum(1 for x in prepared if x is not None)
-    n_skip = len(prepared) - n_prepared
+    timings["prepare_segments_ms"] = round((time.perf_counter() - t_prep0) * 1000, 2)
+    n_prepared = sum(1 for x in prepared_base if x is not None)
+    n_skip = len(prepared_base) - n_prepared
     sk_h = stats[vendors[0].key]["skipped_no_hanzi"] if vendors else 0
-    sk_p = stats[vendors[0].key]["skipped_no_pinyin"] if vendors else 0
     sk_m = stats[vendors[0].key]["skipped_mixed_content"] if vendors else 0
     sk_short = stats[vendors[0].key]["skipped_too_short"] if vendors else 0
     logger.info(
-        "[pypinyin] 完成: 耗时 %.2f ms | 可评测 %d 句 | 跳过 %d 段（混合/非纯汉字或含 ASCII 数字字母: %d，"
-        "纯汉字但不足 %d 字: %d，无汉字: %d，无拼音: %d）",
-        timings["pypinyin_ms"],
+        "[预过滤] 完成: 耗时 %.2f ms | 候选 %d 句 | 跳过 %d 段（混合/非纯汉字或含 ASCII 数字字母: %d，"
+        "纯汉字但不足 %d 字: %d，无汉字: %d）",
+        timings["prepare_segments_ms"],
         n_prepared,
         n_skip,
         sk_m,
         MIN_EVAL_HANZI_CHARS,
         sk_short,
         sk_h,
-        sk_p,
     )
 
     try:
@@ -673,6 +691,44 @@ def run_benchmark(
 
         for v in vendors:
             st = stats[v.key]
+            input_label = _vendor_input_label(v)
+            logger.info("[输入串 %s] 开始: %s，共 %d 句", v.key, input_label, n_prepared)
+            t_input0 = time.perf_counter()
+            try:
+                prepared_vendor: List[Dict[str, Any]] = []
+                for slot in prepared_base:
+                    if slot is None:
+                        continue
+                    raw_input = _build_vendor_input(v, slot["text"], root)
+                    if not raw_input:
+                        st["skipped_no_input"] += 1
+                        continue
+                    prepared_vendor.append(
+                        {
+                            "index": slot["index"],
+                            "gold": slot["gold"],
+                            "input": raw_input,
+                        }
+                    )
+            except FileNotFoundError as e:
+                input_ms = round((time.perf_counter() - t_input0) * 1000, 2)
+                timings["vendors"][v.key] = {
+                    "input_ms": input_ms,
+                    "load_ms": 0.0,
+                    "session_open_ms": 0.0,
+                    "decode_ms": 0.0,
+                }
+                logger.warning("[输入串 %s] 失败: %.2f ms — %s", v.key, input_ms, e)
+                continue
+            input_ms = round((time.perf_counter() - t_input0) * 1000, 2)
+            logger.info(
+                "[输入串 %s] 完成: %s | 耗时 %.2f ms | 可解码 %d 句 | 缺少输入串 %d 句",
+                v.key,
+                input_label,
+                input_ms,
+                len(prepared_vendor),
+                st["skipped_no_input"],
+            )
             ud = v.data_dir()
             sd = shared_data_dir()
             logger.info(
@@ -686,9 +742,7 @@ def run_benchmark(
             try:
                 runner.switch_distro(v)
             except FileNotFoundError as e:
-                for slot in prepared:
-                    if slot is None:
-                        continue
+                for slot in prepared_vendor:
                     gold = slot["gold"]
                     st["sentences_total"] += 1
                     st["decode_failed"] += 1
@@ -699,7 +753,7 @@ def run_benchmark(
                             "index": slot["index"],
                             "vendor": v.key,
                             "gold": gold,
-                            "pinyin": slot["pinyin"],
+                            "input": slot["input"],
                             "prediction": "",
                             "exact": False,
                             "cer": cer,
@@ -708,6 +762,7 @@ def run_benchmark(
                     )
                 load_ms = round((time.perf_counter() - t_load0) * 1000, 2)
                 timings["vendors"][v.key] = {
+                    "input_ms": input_ms,
                     "load_ms": load_ms,
                     "session_open_ms": 0.0,
                     "decode_ms": 0.0,
@@ -727,9 +782,9 @@ def run_benchmark(
                 load_ms,
             )
             logger.info(
-                "[librime:解码 %s] 开始: 同一会话内逐句 feed_pinyin + get_context（RimeSetInput 若可用），共 %d 句",
+                "[librime:解码 %s] 开始: 同一会话内逐句 feed_input + get_context（RimeSetInput 若可用），共 %d 句",
                 v.key,
-                n_prepared,
+                len(prepared_vendor),
             )
             t_sess0 = time.perf_counter()
             session_ok = runner.begin_decode_batch()
@@ -742,9 +797,7 @@ def run_benchmark(
                         "[librime:解码 %s] 无法打开会话（create_session/select_schema），本方案全部记为解码失败",
                         v.key,
                     )
-                    for slot in prepared:
-                        if slot is None:
-                            continue
+                    for slot in prepared_vendor:
                         st["sentences_total"] += 1
                         st["decode_failed"] += 1
                         gold = slot["gold"]
@@ -755,7 +808,7 @@ def run_benchmark(
                                 "index": slot["index"],
                                 "vendor": v.key,
                                 "gold": gold,
-                                "pinyin": slot["pinyin"],
+                                "input": slot["input"],
                                 "prediction": "",
                                 "exact": False,
                                 "cer": cer,
@@ -764,11 +817,9 @@ def run_benchmark(
                         )
                         done += 1
                 else:
-                    for slot in prepared:
-                        if slot is None:
-                            continue
+                    for slot in prepared_vendor:
                         st["sentences_total"] += 1
-                        res = runner.decode_pinyin_in_batch(slot["pinyin"])
+                        res = runner.decode_input_in_batch(slot["input"])
                         pred = res.prediction if res.ok else ""
                         gold = slot["gold"]
                         if not res.ok:
@@ -784,7 +835,7 @@ def run_benchmark(
                                 "index": slot["index"],
                                 "vendor": v.key,
                                 "gold": gold,
-                                "pinyin": slot["pinyin"],
+                                "input": slot["input"],
                                 "prediction": pred,
                                 "exact": exact,
                                 "cer": cer,
@@ -793,12 +844,13 @@ def run_benchmark(
                         )
                         done += 1
                         if progress_every and done % progress_every == 0:
-                            logger.info("[librime:解码 %s] 进度 %d / %d 句", v.key, done, n_prepared)
+                            logger.info("[librime:解码 %s] 进度 %d / %d 句", v.key, done, len(prepared_vendor))
             finally:
                 runner.end_decode_batch()
 
             decode_ms = round((time.perf_counter() - t_dec0) * 1000, 2)
             timings["vendors"][v.key] = {
+                "input_ms": input_ms,
                 "load_ms": load_ms,
                 "session_open_ms": session_open_ms,
                 "decode_ms": decode_ms,
@@ -1042,7 +1094,7 @@ def main() -> None:
         "--vendors",
         nargs="*",
         default=None,
-        help="Subset of vendor keys: rime_frost rime_ice wanxiang mingyuepinyin",
+        help="Subset of vendor keys: mingyuepinyin rime_ice rime_frost wanxiang rime_wubi_sentence",
     )
     p.add_argument("--progress-every", type=int, default=50, help="Print progress every N raw segments (0=off)")
     p.add_argument(
@@ -1123,7 +1175,7 @@ def main() -> None:
         logger.warning("[启动] --label 在多语料模式下会被忽略")
 
     logger.info(
-        "[流程] 多语料模式: 依次执行 [分句]→[pypinyin]→[librime:各方案] 共 %d 轮，最后 [聚合]+[写出结果]",
+        "[流程] 多语料模式: 依次执行 [分句]→[输入串]→[librime:各方案] 共 %d 轮，最后 [聚合]+[写出结果]",
         len(corpora),
     )
     all_rows: List[Dict[str, Any]] = []
@@ -1137,7 +1189,7 @@ def main() -> None:
             ">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
         )
         logger.info(
-            "[大步骤 %d/%d] 语料 «%s» — 将执行 [分句] [pypinyin] [librime×%d]",
+            "[大步骤 %d/%d] 语料 «%s» — 将执行 [分句] [输入串] [librime×%d]",
             idx,
             len(corpora),
             stem,

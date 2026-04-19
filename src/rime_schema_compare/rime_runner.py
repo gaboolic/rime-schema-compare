@@ -32,11 +32,16 @@ class RimeDistroRunner:
         self._batch_session_id: Optional[int] = None
 
     @property
-    def pinyin_feed_mode(self) -> str:
+    def input_feed_mode(self) -> str:
         """``set_input`` (librime 1.9+ 导出 ``RimeSetInput``) 或 ``simulate_key_sequence``。"""
         if self._rime is None:
             return "uninitialized"
         return "set_input" if self._rime.uses_set_input() else "simulate_key_sequence"
+
+    @property
+    def pinyin_feed_mode(self) -> str:
+        """Backward-compatible alias for :attr:`input_feed_mode`."""
+        return self.input_feed_mode
 
     def close(self) -> None:
         if self._rime is not None:
@@ -100,10 +105,10 @@ class RimeDistroRunner:
             finally:
                 self._batch_session_id = None
 
-    def _decode_from_feed(self, session_id: int, pinyin: str) -> DecodeResult:
+    def _decode_from_input(self, session_id: int, raw_input: str) -> DecodeResult:
         assert self._rime is not None
-        if not self._rime.feed_pinyin(session_id, pinyin):
-            return DecodeResult("", False, "feed_pinyin_failed")
+        if not self._rime.feed_input(session_id, raw_input):
+            return DecodeResult("", False, "feed_input_failed")
         ctx = self._rime.get_context(session_id)
         if not ctx:
             return DecodeResult("", False, "no_context")
@@ -113,13 +118,17 @@ class RimeDistroRunner:
             return DecodeResult("", False, "empty_top_candidate")
         return DecodeResult(top, True, "ok")
 
-    def decode_pinyin_in_batch(self, pinyin: str) -> DecodeResult:
+    def decode_input_in_batch(self, raw_input: str) -> DecodeResult:
         """Decode one sentence using the session from :meth:`begin_decode_batch`."""
         if self._rime is None or self._batch_session_id is None:
             return DecodeResult("", False, "batch_session_not_open")
-        return self._decode_from_feed(self._batch_session_id, pinyin)
+        return self._decode_from_input(self._batch_session_id, raw_input)
 
-    def decode_pinyin(self, pinyin: str, schema_id: Optional[str] = None) -> DecodeResult:
+    def decode_pinyin_in_batch(self, pinyin: str) -> DecodeResult:
+        """Backward-compatible alias for :meth:`decode_input_in_batch`."""
+        return self.decode_input_in_batch(pinyin)
+
+    def decode_input(self, raw_input: str, schema_id: Optional[str] = None) -> DecodeResult:
         """One-shot: new session per call (e.g. smoke tests)."""
         if self._rime is None or self._user_dir is None:
             return DecodeResult("", False, "rime_not_initialized")
@@ -130,6 +139,10 @@ class RimeDistroRunner:
         try:
             if not self._rime.select_schema(session_id, sid):
                 return DecodeResult("", False, "select_schema_failed")
-            return self._decode_from_feed(session_id, pinyin)
+            return self._decode_from_input(session_id, raw_input)
         finally:
             self._rime.destroy_session(session_id)
+
+    def decode_pinyin(self, pinyin: str, schema_id: Optional[str] = None) -> DecodeResult:
+        """Backward-compatible alias for :meth:`decode_input`."""
+        return self.decode_input(pinyin, schema_id=schema_id)

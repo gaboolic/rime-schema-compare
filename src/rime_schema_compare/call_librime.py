@@ -755,11 +755,15 @@ class RimeDllWrapper:
             print(f"RimeSetInput 失败: {e}")
             return False
 
-    def feed_pinyin(self, session_id: int, pinyin: str) -> bool:
-        """Set raw pinyin in one shot when supported, else fall back to key simulation."""
-        if self.set_input(session_id, pinyin):
+    def feed_input(self, session_id: int, raw_input: str) -> bool:
+        """Set raw input in one shot when supported, else fall back to key simulation."""
+        if self.set_input(session_id, raw_input):
             return True
-        return self.simulate_key_sequence(session_id, pinyin)
+        return self.simulate_key_sequence(session_id, raw_input)
+
+    def feed_pinyin(self, session_id: int, pinyin: str) -> bool:
+        """Backward-compatible alias for :meth:`feed_input`."""
+        return self.feed_input(session_id, pinyin)
 
     def simulate_key_sequence(self, session_id: int, key_sequence: str) -> bool:
         """

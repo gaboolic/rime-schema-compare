@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One-shot check: RIME_DLL + first vendor directory + a short pinyin string."""
+"""One-shot check: RIME_DLL + first vendor directory + a short input string."""
 
 from __future__ import annotations
 
@@ -28,8 +28,8 @@ def main() -> None:
     runner = RimeDistroRunner(dll)
     try:
         runner.switch_distro(v)
-        print("pinyin_feed_mode:", runner.pinyin_feed_mode)
-        r = runner.decode_pinyin("ceshi")
+        print("input_feed_mode:", runner.input_feed_mode)
+        r = runner.decode_input("ceshi")
         print("dll:", dll)
         print("vendor:", v.key, v.schema_id)
         print("decode 'ceshi':", r)
