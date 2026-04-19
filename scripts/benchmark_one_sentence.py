@@ -93,8 +93,8 @@ def main() -> int:
                 print(f"iter {i}: get_context returned None")
             elif i == 0:
                 nc = len((ctx.get("candidates") or []))
-                prev = (ctx.get("commit_text_preview") or "").strip()
-                print(f"first iter: candidates={nc} commit_text_preview[:40]={prev[:40]!r}")
+                top = ((ctx.get("candidates") or [{}])[0].get("text") or "").strip() if nc else ""
+                print(f"first iter: candidates={nc} top_candidate[:40]={top[:40]!r}")
 
         runner.end_decode_batch()
 

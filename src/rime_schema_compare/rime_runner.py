@@ -107,13 +107,11 @@ class RimeDistroRunner:
         ctx = self._rime.get_context(session_id)
         if not ctx:
             return DecodeResult("", False, "no_context")
-        preview = (ctx.get("commit_text_preview") or "").strip()
         cands: List[dict] = ctx.get("candidates") or []
         top = (cands[0].get("text") or "").strip() if cands else ""
-        text = preview or top
-        if not text:
-            return DecodeResult("", False, "empty_prediction")
-        return DecodeResult(text, True, "ok")
+        if not top:
+            return DecodeResult("", False, "empty_top_candidate")
+        return DecodeResult(top, True, "ok")
 
     def decode_pinyin_in_batch(self, pinyin: str) -> DecodeResult:
         """Decode one sentence using the session from :meth:`begin_decode_batch`."""

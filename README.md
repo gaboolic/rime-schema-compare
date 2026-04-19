@@ -30,48 +30,20 @@
 git submodule update --init --recursive --depth 1
 ```
 
-### Rime 部署（每个要测的 `vendor/*` 至少做一次）
-
-子模块里多为 **源码 YAML**。在跑 librime 前，需要像正常用户目录一样 **部署/编译** 出 `.bin` 等产物（例如把该目录拷到小狼毫用户目录后点「部署」，或对应该路径运行 `rime_deployer`）。未部署时，结果里会出现大量 `empty_prediction` / `no_context`。
-
-### 安装依赖与 `rime.dll`
+### 安装依赖
 
 ```bash
 pip install -r requirements.txt
 ```
 
-可选：在仓库根目录建 `.env`，指定 DLL 路径：
-
-```env
-RIME_DLL=C:\Program Files\Rime\weasel-0.16.3\rime.dll
-```
-
-若把 **`rime.dll`**（及所需同伴 DLL）放在 **仓库根目录**，脚本会优先使用，否则会扫描常见 `Program Files\Rime\weasel-*` 路径。
 
 ### 运行命令
 
 在仓库根目录执行（PowerShell / cmd 示例）：
 
-```bash
-set RIME_DLL=C:\Program Files\Rime\weasel-0.16.3\rime.dll
-python scripts\smoke_rime.py
-python scripts\benchmark_sentences.py
 ```
-
-不传 `--corpus` 时，会一次性评测 **`data/corpus/` 下所有 `*.txt`**。指定单个或多个语料文件：
-
-```bash
-python scripts\benchmark_sentences.py --corpus data\corpus\prose.txt
-python scripts\benchmark_sentences.py --corpus data\corpus\prose.txt data\corpus\tech.txt
+./scripts/run_test.ps1
 ```
-
-常用参数：
-
-- `--vendors rime_frost rime_ice wanxiang mingyuepinyin` — 只跑其中若干套（键名见上表，默认四套全跑）。
-- `--out-dir artifacts` — 输出目录。
-- `--rime-dll <路径>` — 覆盖 `rime.dll`（等价于环境变量）。
-- `--progress-every N` — 每 N 个原始分句打一条进度到 stderr（`0` 关闭）。
-- `--eval-synonyms path/to.json` — 评测用同义词归一化规则（默认 `data/eval_synonyms.json`；不存在则用内置规则）。
 
 ### 输出文件（`artifacts/`）
 
@@ -146,12 +118,6 @@ python scripts\benchmark_sentences.py --corpus data\corpus\prose.txt data\corpus
 | [`scripts/benchmark_sentences.py`](scripts/benchmark_sentences.py) | 主评测 CLI |
 | [`data/corpus/`](data/corpus/) | 示例语料（UTF-8，可换成自己的文本） |
 
-## 故障排除
-
-- **`FileNotFoundError`（`rime.dll`）** — 设置 `RIME_DLL` 或 `--rime-dll` 指向小狼毫目录中的 `rime.dll`。
-- **`Vendor data directory missing`** — 执行 `git submodule update --init --recursive`（并确认 `vendor/mingyuepinyin` 等目录存在）。
-- **大量 `empty_prediction`** — 对该 `vendor/*` 执行 Rime 部署，生成编译产物。
-- **子模块克隆 SSL 错误** — 检查 Git HTTPS / 代理后重试。
 
 ## License
 

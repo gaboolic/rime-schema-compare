@@ -14,7 +14,6 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
 lib64/
 parts/
 sdist/
@@ -197,8 +196,6 @@ cython_debug/
 # Benchmark outputs
 artifacts/
 
-# Local librime copy (optional)
-/rime.dll
 
 # Cursor
 #  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
