@@ -9,17 +9,20 @@
 
 默认参与对比的方案在 `src/rime_schema_compare/config.py` 的 `DEFAULT_VENDORS` 中定义：每个条目包含 **vendor 键**（命令行与报表列名）、**子目录**、以及 **主 schema_id**（librime 里选用的方案 ID）。
 
+默认对比的基础方案均按“**无语言模型、无用户词库**”口径评测：不额外挂载 `.gram` 模型文件，且评测前会清理 `userdb` 并通过 `custom.yaml` 禁用 `translator/enable_user_dict`。所有 `*_with_gram` 变体也统一复用同一个 [`wanxiang-lts-zh-hans.gram`](https://github.com/amzxyz/RIME-LMDG/releases)，仅在各自方案目录下额外挂载该语言模型，其余仍保持禁用用户词库。
+
 | Vendor 键 | 目录 | 主 schema | 说明 |
 |-----------|------|-----------|------|
 | `mingyuepinyin` | `vendor/mingyuepinyin` | `luna_pinyin_simp` | 明月拼音（简体全拼），与 Rime 自带 Luna 系方案同源的一类发行 |
+| `mingyuepinyin_with_gram` | `vendor/mingyuepinyin_with_gram` | `luna_pinyin_simp` | 带 `wanxiang-lts-zh-hans` ngram 模型的明月拼音；其余配置与 `vendor/mingyuepinyin` 保持一致 |
 | `rime_ice` | `vendor/rime-ice` | `rime_ice` | 雾凇拼音 |
+| `rime_ice_with_gram` | `vendor/rime-ice_with_gram` | `rime_ice` | 带 `wanxiang-lts-zh-hans` ngram 模型的雾凇拼音；其余配置与 `vendor/rime-ice` 保持一致 |
 | `rime_frost` | `vendor/rime-frost` | `rime_frost` | 白霜拼音（rime-frost） |
 | `rime_frost_with_gram` | `vendor/rime-frost_with_gram` | `rime_frost` | 带 `wanxiang-lts-zh-hans` ngram 模型的白霜拼音；其余配置与 `vendor/rime-frost` 保持一致 |
 | `wanxiang` | `vendor/rime_wanxiang` | `wanxiang` | 万象拼音（子模块跟踪分支 `wanxiang`，见 [.gitmodules](.gitmodules)） |
 | `rime_wanxiang_with_gram` | `vendor/rime_wanxiang_with_gram` | `wanxiang` | 带 `ngrams` 模型文件的万象拼音；其余配置与 `vendor/rime_wanxiang` 保持一致 |
 | `rime_wubi_sentens_wubi86` | `vendor/rime-wubi-sentence` | `wubi86` | `gaboolic/rime-wubi-sentence` 的五笔整句 `wubi86` 方案；输入串按单字形码表取前 2 码连续拼接 |
-| `rime_wubi_sentens_tiger` | `vendor/rime-wubi-sentence` | `tiger` | `gaboolic/rime-wubi-sentence` 的虎码整句方案；输入串按单字形码表取前 2 码连续拼接 |
-| `rime_wubi_sentens_ziyuan` | `vendor/rime-wubi-sentence` | `ziyuan` | `gaboolic/rime-wubi-sentence` 的字源整句方案；输入串按单字形码表取前 2 码连续拼接 |
+| `rime_wubi_sentens_wubi86_with_gram` | `vendor/rime-wubi-sentence_with_gram` | `wubi86` | 带 `wanxiang-lts-zh-hans` ngram 模型的五笔整句 `wubi86` 方案；其余配置与 `vendor/rime-wubi-sentence` 保持一致 |
 
 各方案的实际 YAML、编译产物与用户状态都放在各自的 `vendor/...` 目录下；所有方案共用的只读资源放在 [`vendor/data`](vendor/data)（不存在会自动创建）。需要让所有方案看到同一套程序级配置或补丁时，把文件放在 `vendor/data`（例如从小狼毫安装目录复制或做符号链接）。
 
@@ -91,6 +94,7 @@ pip install -r requirements.txt
 - 纯汉字片段长度须 **不少于 `MIN_EVAL_HANZI_CHARS`（默认 5）**。
 - 拼音类方案由 `pypinyin` 的 `lazy_pinyin(..., Style.NORMAL)` 生成 **连续小写全拼** 作为输入。
 - `rime_wubi_sentens_wubi86` 读取 `vendor/rime-wubi-sentence/program/wubi86.dict.yaml` 的单字码表，对每个汉字取对应形码的**前 2 个字母**并串接成输入；若句中任一字缺码，则该句对该方案跳过。
+- `rime_wubi_sentens_wubi86_with_gram` 读取 `vendor/rime-wubi-sentence_with_gram/program/wubi86.dict.yaml` 的单字码表，对每个汉字取对应形码的**前 2 个字母**并串接成输入；若句中任一字缺码，则该句对该方案跳过。
 - `rime_wubi_sentens_tiger` 读取 `vendor/rime-wubi-sentence/program/tiger.dict.yaml` 的单字码表，对每个汉字取对应形码的**前 2 个字母**并串接成输入；若句中任一字缺码，则该句对该方案跳过。
 - `rime_wubi_sentens_ziyuan` 读取 `vendor/rime-wubi-sentence/cn_dicts_ziyuan/8105.dict.yaml` 的单字码表，对每个汉字取对应形码的**前 2 个字母**并串接成输入；若句中任一字缺码，则该句对该方案跳过。
 

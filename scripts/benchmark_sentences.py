@@ -83,6 +83,39 @@ def _pick_vendors(keys: Optional[List[str]]) -> List[VendorConfig]:
     return out
 
 
+def _filter_unavailable_vendors(root: Path, vendors: List[VendorConfig]) -> List[VendorConfig]:
+    out: List[VendorConfig] = []
+    skipped: List[str] = []
+    for vendor in vendors:
+        vendor_dir = vendor.data_dir(root)
+        input_dict = vendor.input_dict_path(root)
+        missing_reason: Optional[str] = None
+        if not vendor_dir.is_dir():
+            missing_reason = f"目录不存在: {vendor_dir}"
+        elif input_dict is not None and not input_dict.is_file():
+            missing_reason = f"输入码表不存在: {input_dict}"
+
+        if not missing_reason:
+            out.append(vendor)
+            continue
+
+        if "_with_gram" in vendor.key:
+            skipped.append(f"{vendor.key}（{missing_reason}）")
+            continue
+
+        raise SystemExit(f"Vendor {vendor.key} unavailable: {missing_reason}")
+
+    if skipped:
+        logger.warning(
+            "[启动] 跳过 %d 套可选 with_gram 方案：%s",
+            len(skipped),
+            "；".join(skipped),
+        )
+    if not out:
+        raise SystemExit("No available vendors to benchmark after filtering missing directories.")
+    return out
+
+
 def _vendor_input_label(vendor: VendorConfig) -> str:
     if vendor.input_mode == "pinyin":
         return "拼音全拼"
@@ -1094,7 +1127,7 @@ def main() -> None:
         "--vendors",
         nargs="*",
         default=None,
-        help="Subset of vendor keys: mingyuepinyin rime_ice rime_frost rime_frost_with_gram wanxiang rime_wanxiang_with_gram rime_wubi_sentens_wubi86 rime_wubi_sentens_tiger rime_wubi_sentens_ziyuan",
+        help="Subset of vendor keys: mingyuepinyin mingyuepinyin_with_gram rime_ice rime_ice_with_gram rime_frost rime_frost_with_gram wanxiang rime_wanxiang_with_gram rime_wubi_sentens_wubi86 rime_wubi_sentens_wubi86_with_gram rime_wubi_sentens_tiger rime_wubi_sentens_ziyuan",
     )
     p.add_argument("--progress-every", type=int, default=50, help="Print progress every N raw segments (0=off)")
     p.add_argument(
@@ -1112,7 +1145,7 @@ def main() -> None:
     logger.info("[启动] rime.dll: %s", dll)
     sd0 = shared_data_dir(root)
     logger.info("[启动] 各方案共用的 shared_data_dir: %s", sd0)
-    vendors = _pick_vendors(args.vendors)
+    vendors = _filter_unavailable_vendors(root, _pick_vendors(args.vendors))
     logger.info(
         "[启动] 将对比 %d 套方案: %s",
         len(vendors),

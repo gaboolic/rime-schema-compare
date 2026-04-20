@@ -218,3 +218,8 @@ vendor/mingyuepinyin/installation.yaml
 vendor/mingyuepinyin/luna_pinyin_simp.custom.yaml
 .gitignore
 vendor/mingyuepinyin/user.yaml
+vendor/mingyuepinyin_with_gram/
+vendor/rime_wanxiang_with_gram/
+vendor/rime-frost_with_gram/
+vendor/rime-ice_with_gram/
+vendor/rime-wubi-sentence_with_gram/

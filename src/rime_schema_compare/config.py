@@ -46,14 +46,24 @@ class VendorConfig:
 # Default schema ids match each distro's primary benchmark schema.
 DEFAULT_VENDORS: List[VendorConfig] = [
     VendorConfig("mingyuepinyin", "vendor/mingyuepinyin", "luna_pinyin_simp"),
+    VendorConfig("mingyuepinyin_with_gram", "vendor/mingyuepinyin_with_gram", "luna_pinyin_simp"),
     VendorConfig("rime_ice", "vendor/rime-ice", "rime_ice"),
+    VendorConfig("rime_ice_with_gram", "vendor/rime-ice_with_gram", "rime_ice"),
     VendorConfig("rime_frost", "vendor/rime-frost", "rime_frost"),
-    # VendorConfig("rime_frost_with_gram", "vendor/rime-frost_with_gram", "rime_frost"),
+    VendorConfig("rime_frost_with_gram", "vendor/rime-frost_with_gram", "rime_frost"),
     VendorConfig("wanxiang", "vendor/rime_wanxiang", "wanxiang"),
-    # VendorConfig("rime_wanxiang_with_gram", "vendor/rime_wanxiang_with_gram", "wanxiang"),
+    VendorConfig("rime_wanxiang_with_gram", "vendor/rime_wanxiang_with_gram", "wanxiang"),
     VendorConfig(
         "rime_wubi_sentens_wubi86",
         "vendor/rime-wubi-sentence",
+        "wubi86",
+        input_mode="shape_code_prefix",
+        input_dict_rel_path="program/wubi86.dict.yaml",
+        input_code_prefix_len=2,
+    ),
+    VendorConfig(
+        "rime_wubi_sentens_wubi86_with_gram",
+        "vendor/rime-wubi-sentence_with_gram",
         "wubi86",
         input_mode="shape_code_prefix",
         input_dict_rel_path="program/wubi86.dict.yaml",
