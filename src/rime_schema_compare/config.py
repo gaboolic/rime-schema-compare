@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -88,12 +89,39 @@ DEFAULT_VENDORS: List[VendorConfig] = [
 ]
 
 
+def _append_unique_file(paths: List[Path], candidate: Path) -> None:
+    if candidate.is_file() and candidate not in paths:
+        paths.append(candidate)
+
+
 def default_rime_dll_candidates() -> List[Path]:
-    """Prefer repo-root rime.dll, then common Weasel install locations on Windows."""
+    """Prefer repo-local shared libraries, then common Weasel install locations."""
     out: List[Path] = []
-    root_dll = repo_root() / "rime.dll"
-    if root_dll.is_file():
-        out.append(root_dll)
+    root = repo_root()
+
+    # Repo-local copies are the most reproducible across platforms.
+    if sys.platform == "darwin":
+        for pattern in ("librime*.dylib",):
+            for candidate in sorted(root.glob(pattern)):
+                _append_unique_file(out, candidate)
+            for candidate in sorted((root / "lib").glob(pattern)):
+                _append_unique_file(out, candidate)
+        return out
+
+    if sys.platform.startswith("linux"):
+        for pattern in ("librime.so", "librime.so.*", "librime*.so", "librime*.so.*"):
+            for candidate in sorted(root.glob(pattern)):
+                _append_unique_file(out, candidate)
+            for candidate in sorted((root / "lib").glob(pattern)):
+                _append_unique_file(out, candidate)
+        return out
+
+    for candidate in (
+        root / "rime.dll",
+        root / "lib" / "rime.dll",
+    ):
+        _append_unique_file(out, candidate)
+
     program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
     program_files_x86 = os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")
     roots = [Path(program_files), Path(program_files_x86)]
@@ -115,14 +143,16 @@ def resolve_rime_dll(explicit: Optional[str] = None) -> Path:
         p = Path(explicit)
         if p.is_file():
             return p.resolve()
-        raise FileNotFoundError(f"RIME_DLL path is not a file: {explicit}")
-    env = os.environ.get("RIME_DLL", "").strip()
-    if env:
-        return resolve_rime_dll(env)
+        raise FileNotFoundError(f"Rime library path is not a file: {explicit}")
+    for env_var in ("RIME_LIBRARY", "RIME_DLL"):
+        env = os.environ.get(env_var, "").strip()
+        if env:
+            return resolve_rime_dll(env)
     for c in default_rime_dll_candidates():
         if c.is_file():
             return c.resolve()
     raise FileNotFoundError(
-        "Could not find rime.dll. Set environment variable RIME_DLL to the full path "
-        "(e.g. Weasel install folder)."
+        "Could not find a Rime shared library. Set RIME_LIBRARY or RIME_DLL to the full path "
+        "(for example `rime.dll` on Windows, `librime*.dylib` on macOS, "
+        "or `librime.so*` on Linux)."
     )

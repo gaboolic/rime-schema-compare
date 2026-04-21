@@ -1,6 +1,7 @@
 # rime-schema-compare
 
-在 **Windows** 上用 **Python + librime**（`rime.dll`，例如小狼毫自带）对比多套 Rime 词库方案的 **整句解码准确率**。
+用 **Python + librime** 对比多套 Rime 词库方案的 **整句解码准确率**。[librime](https://github.com/rime/librime)
+当前 `librime` 进程内评测支持 **Windows / macOS / Linux**，会按平台自动查找动态库：Windows 使用 `rime.dll`，macOS 使用 `librime*.dylib`，Linux 使用 `librime.so*`。
 
 ## 最新评测结果 
 [查看rime多方案最新评测结果（调用librime）](report/latest.md)
@@ -34,7 +35,10 @@
 
 ### 前置条件
 
-- 已安装 **小狼毫**（或其它提供 `rime.dll` 及同目录依赖 DLL 的环境）。
+- 已安装可用的 **librime** 运行环境，且动态库及其依赖可被加载：
+  - Windows：`rime.dll`（例如小狼毫自带）
+  - macOS：`librime*.dylib`
+  - Linux：`librime.so*`
 - **Python 3.10+** 建议。
 - **Git 子模块** 已拉取（首次体积较大）：
 
@@ -51,7 +55,15 @@ pip install -r requirements.txt
 
 ### 运行命令
 
-通过librime测试各个rime输入方案，可在仓库根目录执行（PowerShell / cmd 示例）：
+通过 `librime` 测试各个 Rime 输入方案，推荐直接运行 Python CLI；仓库会按当前系统自动解析动态库，也可手动用 `RIME_LIBRARY`（兼容旧变量 `RIME_DLL`）指定绝对路径：
+
+```bash
+python scripts/benchmark_sentences.py
+python scripts/benchmark_sentences.py --corpus data/corpus/news.txt
+RIME_LIBRARY=/absolute/path/to/librime python scripts/benchmark_sentences.py
+```
+
+Windows 下也可以继续使用 PowerShell 入口：
 
 ```
 ./scripts/run_test.ps1
@@ -165,7 +177,7 @@ Windows 拼音输入法黑盒脚本复用同一套分句、过滤、同义词归
 
 | 路径 | 作用 |
 |------|------|
-| [`src/rime_schema_compare/call_librime.py`](src/rime_schema_compare/call_librime.py) | `rime.dll` 的 ctypes 封装 |
+| [`src/rime_schema_compare/call_librime.py`](src/rime_schema_compare/call_librime.py) | Rime 动态库（`rime.dll` / `librime*.dylib` / `librime.so*`）的 ctypes 封装 |
 | [`scripts/benchmark_sentences.py`](scripts/benchmark_sentences.py) | 主评测 CLI |
 | [`data/corpus/`](data/corpus/) | 示例语料（UTF-8，可换成自己的文本） |
 

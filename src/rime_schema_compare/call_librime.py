@@ -250,43 +250,78 @@ class RimeDllWrapper:
         初始化 Rime DLL 包装器
         
         Args:
-            dll_path: rime.dll 的路径
+            dll_path: Rime 动态库路径（Windows: ``rime.dll``；macOS: ``librime*.dylib``；
+                      Linux: ``librime.so*``）
                     如果为 None，会自动查找
         """
         if dll_path is None:
-            # 自动查找 rime.dll
+            # 自动查找 Rime 动态库
             project_root = Path(__file__).parent.parent.parent
-            possible_paths = [
-                project_root / "librime" / "build" / "bin" / "Release" / "rime.dll",
-                project_root / "librime" / "build" / "bin" / "rime.dll",
-                Path("librime/build/bin/Release/rime.dll"),
-                Path("build/bin/Release/rime.dll"),
-            ]
-            
-            for path in possible_paths:
-                if path.exists():
-                    dll_path = str(path.resolve())
+            possible_paths = []
+
+            if sys.platform == "darwin":
+                for pattern_root in (project_root, project_root / "lib"):
+                    for candidate in sorted(pattern_root.glob("librime*.dylib")):
+                        if candidate not in possible_paths:
+                            possible_paths.append(candidate)
+                for candidate in (
+                    project_root / "lib" / "librime.dylib",
+                    project_root / "librime.dylib",
+                ):
+                    if candidate not in possible_paths:
+                        possible_paths.append(candidate)
+            elif sys.platform.startswith("linux"):
+                for pattern_root in (project_root, project_root / "lib"):
+                    for pattern in ("librime.so", "librime.so.*", "librime*.so", "librime*.so.*"):
+                        for candidate in sorted(pattern_root.glob(pattern)):
+                            if candidate not in possible_paths:
+                                possible_paths.append(candidate)
+            else:
+                possible_paths.extend(
+                    [
+                        project_root / "rime.dll",
+                        project_root / "lib" / "rime.dll",
+                        project_root / "librime" / "build" / "bin" / "Release" / "rime.dll",
+                        project_root / "librime" / "build" / "bin" / "rime.dll",
+                        Path("librime/build/bin/Release/rime.dll"),
+                        Path("build/bin/Release/rime.dll"),
+                    ]
+                )
+
+            for env_var in ("RIME_LIBRARY", "RIME_DLL"):
+                env_path = os.environ.get(env_var, "").strip()
+                if env_path:
+                    dll_path = env_path
                     break
             
             if dll_path is None:
+                for path in possible_paths:
+                    if path.exists():
+                        dll_path = str(path.resolve())
+                        break
+            
+            if dll_path is None:
                 raise FileNotFoundError(
-                    "找不到 rime.dll。请指定完整路径。\n"
+                    "找不到 Rime 动态库。请指定完整路径。\n"
                     "尝试的路径：\n" + "\n".join(str(p) for p in possible_paths)
                 )
         
         if not os.path.exists(dll_path):
             raise FileNotFoundError(f"找不到文件: {dll_path}")
         
-        # 加载 DLL
+        # 加载动态库
         try:
-            # 设置 DLL 目录，确保能找到依赖
+            # Windows 下先把动态库目录加入搜索路径，确保能找到依赖。
             dll_dir = os.path.dirname(dll_path)
             if sys.platform == 'win32':
                 os.add_dll_directory(dll_dir)
             
             self.dll = ctypes.CDLL(dll_path)
         except Exception as e:
-            raise RuntimeError(f"加载 rime.dll 失败: {e}\n提示: 确保 rime.dll 及其依赖都在同一目录下")
+            raise RuntimeError(
+                f"加载 Rime 动态库失败: {e}\n"
+                "提示: 确保所选动态库及其依赖位于可加载路径中"
+            )
         
         self.dll_path = dll_path
         self.session_id = 0
