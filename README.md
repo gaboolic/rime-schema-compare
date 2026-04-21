@@ -57,19 +57,22 @@ pip install -r requirements.txt
 ./scripts/run_test.ps1
 ```
 
-### 运行微软拼音黑盒评测
+### 运行 Windows 拼音输入法黑盒评测
 
-Windows 下可单独跑微软拼音的 GUI 黑盒评测：
+Windows 下可单独跑系统/第三方拼音输入法的 GUI 黑盒评测。推荐使用通用入口：
 
 ```bash
-python scripts/benchmark_microsoft_pinyin.py
-python scripts/benchmark_microsoft_pinyin.py --corpus data/corpus/news.txt
+python scripts/benchmark_windows_ime.py --ime microsoft_pinyin
+python scripts/benchmark_windows_ime.py --ime microsoft_pinyin --corpus data/corpus/news.txt
+python scripts/benchmark_windows_ime.py --ime sogou_pinyin
 ```
+
+兼容旧用法：`python scripts/benchmark_microsoft_pinyin.py ...` 仍可用，默认等价于 `--ime microsoft_pinyin`。
 
 默认口径固定为：
 
 - 宿主程序是 `Notepad`
-- 输入法是 **微软拼音**
+- 输入法由 `--ime` 指定，目前支持 `microsoft_pinyin`、`sogou_pinyin`
 - 对每句发送**连续全拼**
 - 按 `Space` 提交第 1 候选
 - 读取最终上屏文本，统计整句准确率与字级准确率
@@ -77,9 +80,9 @@ python scripts/benchmark_microsoft_pinyin.py --corpus data/corpus/news.txt
 注意：
 
 - 这是 **Windows 系统输入法黑盒评测**，不是像 `librime` 那样的进程内调用。
-- 结果会受到 **Windows 版本、微软拼音版本、是否联网、个性化词频、当前系统输入法状态** 的影响。
+- 结果会受到 **Windows 版本、输入法版本、是否联网、个性化词频、当前系统输入法状态** 的影响。
 - 跑黑盒评测时需要保持前台焦点稳定，不要手动切窗口或输入。
-- 当前脚本会尽力切到 `zh-CN` 输入并打开 IME，但仍建议在开始前先手动确认前台输入法就是微软拼音。
+- 当前脚本会尽力切到 `zh-CN` 输入并打开 IME，但对第三方输入法（如搜狗）**不会强制切换到指定品牌**；跑 `--ime sogou_pinyin` 前，建议先手动确认当前前台输入法就是搜狗拼音。
 
 ### 输出文件（`artifacts/`）
 
@@ -103,7 +106,7 @@ python scripts/benchmark_microsoft_pinyin.py --corpus data/corpus/news.txt
 
 对每条参与评测的句子，用 **整句是否完全一致** 统计句子级准确率；字级用 **Levenshtein 编辑距离** 汇总得到 macro CER（总编辑量 / 金文总字数）。比较前可做 **同义词归一化**（默认规则 + `data/eval_synonyms.json`，例如 其它→其他、他/她/它→他、的/地/得→的），可用 `--eval-synonyms` 覆盖。
 
-微软拼音黑盒脚本复用同一套分句、过滤、同义词归一化和 Levenshtein 统计逻辑，因此输出的 `sentence_accuracy_percent` 与 `character_accuracy_percent` 可以和当前 Rime 结果并排看；但两者**不能视为完全同口径的引擎裸对比**，因为微软拼音路径包含宿主窗口、系统 IME 状态与机器环境因素。
+Windows 拼音输入法黑盒脚本复用同一套分句、过滤、同义词归一化和 Levenshtein 统计逻辑，因此输出的 `sentence_accuracy_percent` 与 `character_accuracy_percent` 可以和当前 Rime 结果并排看；但两者**不能视为完全同口径的引擎裸对比**，因为黑盒路径包含宿主窗口、系统 IME 状态与机器环境因素。
 
 ### 语料切分
 

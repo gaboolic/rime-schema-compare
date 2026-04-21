@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Benchmark Microsoft Pinyin via foreground Notepad automation."""
+"""Benchmark a Windows Pinyin IME via foreground Notepad automation."""
 
 from __future__ import annotations
 
@@ -42,7 +42,7 @@ from rime_schema_compare.benchmark_common import (
 )
 from rime_schema_compare.eval_synonyms import EvalSynonymConfig
 from rime_schema_compare.metrics import sentence_exact_match
-from rime_schema_compare.ms_pinyin_harness import MicrosoftPinyinHarness
+from rime_schema_compare.ms_pinyin_harness import WindowsPinyinImeHarness
 from rime_schema_compare.reporting import (
     summary_csv_rows_for_block,
     write_long_csv,
@@ -55,7 +55,7 @@ from rime_schema_compare.reporting import (
 )
 from rime_schema_compare.text_pipeline import MIN_EVAL_HANZI_CHARS, sentence_to_continuous_pinyin, split_sentences
 
-logger = logging.getLogger("benchmark_microsoft_pinyin")
+logger = logging.getLogger("benchmark_windows_ime")
 
 
 @dataclass(frozen=True)
@@ -65,8 +65,52 @@ class BlackboxVendor:
     input_mode: str = "pinyin"
 
 
-MICROSOFT_PINYIN_VENDOR = BlackboxVendor("microsoft_pinyin", "微软拼音")
-DEFAULT_VENDORS = [MICROSOFT_PINYIN_VENDOR]
+@dataclass(frozen=True)
+class ImeProfile:
+    ime_key: str
+    display_name: str
+    engine_display_name: str
+
+    @property
+    def vendor(self) -> BlackboxVendor:
+        return BlackboxVendor(self.ime_key, self.display_name)
+
+    @property
+    def artifact_prefix(self) -> str:
+        return f"benchmark_{self.ime_key}"
+
+    @property
+    def report_title(self) -> str:
+        return f"{self.display_name}黑盒整句评测 — 摘要报告"
+
+    @property
+    def compare_title(self) -> str:
+        return f"{self.display_name}黑盒整句判对对比"
+
+    @property
+    def engine_value(self) -> str:
+        return f"{self.engine_display_name} via Notepad automation"
+
+    @property
+    def footer_note(self) -> str:
+        return (
+            f"黑盒口径: 宿主 = Notepad；目标输入法 = {self.display_name}；输入串 = 连续全拼；提交键 = Space；"
+            "结果来自 GUI 自动化上屏文本，受系统版本、IME 状态、个性化词频与联网状态影响。"
+        )
+
+
+IME_PROFILES: Dict[str, ImeProfile] = {
+    "microsoft_pinyin": ImeProfile("microsoft_pinyin", "微软拼音", "Microsoft Pinyin"),
+    "sogou_pinyin": ImeProfile("sogou_pinyin", "搜狗拼音", "Sogou Pinyin"),
+}
+
+
+def _ime_profile(ime_key: str) -> ImeProfile:
+    profile = IME_PROFILES.get(ime_key.strip().lower())
+    if profile is None:
+        known = ", ".join(sorted(IME_PROFILES))
+        raise SystemExit(f"Unknown --ime {ime_key!r}. Known values: {known}")
+    return profile
 
 
 def _setup_logging() -> None:
@@ -102,6 +146,7 @@ def _write_single_artifacts(
     payload: Dict[str, Any],
     vendors: Sequence[BlackboxVendor],
     *,
+    profile: ImeProfile,
     corpus_label: str,
     corpus_path: Path,
     eval_synonyms: EvalSynonymConfig,
@@ -124,16 +169,16 @@ def _write_single_artifacts(
         mode=f"单语料 ({corpus_label})",
         per_sentence=rows,
         vendors=vendors,
-        title="微软拼音黑盒整句判对对比",
+        title=profile.compare_title,
     )
     write_summary_csv(out_dir / f"{base}_summary.csv", summary_csv_rows_for_block(corpus_label, summary, vendors))
     json_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     write_report_txt(
         out_dir / f"{base}_report.txt",
         generated_utc=stamp,
-        title="微软拼音黑盒整句评测 — 摘要报告",
+        title=profile.report_title,
         engine_label="黑盒引擎",
-        engine_value="Microsoft Pinyin via Notepad automation",
+        engine_value=profile.engine_value,
         corpus_files={corpus_label: str(corpus_path)},
         summary_by_corpus=None,
         summary_overall=summary,
@@ -141,10 +186,7 @@ def _write_single_artifacts(
         mode=f"单语料 ({corpus_label})",
         timings_one_corpus=timings,
         eval_synonyms_summary=eval_synonyms.summary_line(),
-        footer_note=(
-            "黑盒口径: 宿主 = Notepad；输入串 = 连续全拼；提交键 = Space；"
-            "结果来自 GUI 自动化上屏文本，受系统版本、IME 状态、个性化词频与联网状态影响。"
-        ),
+        footer_note=profile.footer_note,
     )
 
 
@@ -153,6 +195,7 @@ def _write_combined_artifacts(
     base: str,
     payload: Dict[str, Any],
     vendors: Sequence[BlackboxVendor],
+    profile: ImeProfile,
 ) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     stamp = payload["generated_at_utc"]
@@ -169,7 +212,7 @@ def _write_combined_artifacts(
         mode="全部语料 (data/corpus/*.txt)",
         per_sentence=payload["per_sentence"],
         vendors=vendors,
-        title="微软拼音黑盒整句判对对比",
+        title=profile.compare_title,
     )
     write_multi_summary_csv(
         out_dir / f"{base}_summary.csv",
@@ -181,9 +224,9 @@ def _write_combined_artifacts(
     write_report_txt(
         out_dir / f"{base}_report.txt",
         generated_utc=stamp,
-        title="微软拼音黑盒整句评测 — 摘要报告",
+        title=profile.report_title,
         engine_label="黑盒引擎",
-        engine_value="Microsoft Pinyin via Notepad automation",
+        engine_value=profile.engine_value,
         corpus_files=payload.get("corpus_files"),
         summary_by_corpus=payload["summary_by_corpus"],
         summary_overall=payload["summary_overall"],
@@ -192,17 +235,14 @@ def _write_combined_artifacts(
         timings_by_corpus=payload.get("timings_by_corpus"),
         timings_wall_total_ms=payload.get("timings_wall_total_ms"),
         eval_synonyms_summary=(payload.get("eval_synonyms") or {}).get("rules_summary"),
-        footer_note=(
-            "黑盒口径: 宿主 = Notepad；输入串 = 连续全拼；提交键 = Space；"
-            "结果来自 GUI 自动化上屏文本，受系统版本、IME 状态、个性化词频与联网状态影响。"
-        ),
+        footer_note=profile.footer_note,
     )
 
 
 def run_blackbox_benchmark(
     corpus_path: Path,
     out_dir: Path,
-    vendor: BlackboxVendor,
+    profile: ImeProfile,
     corpus_label: str,
     progress_every: int,
     *,
@@ -213,6 +253,7 @@ def run_blackbox_benchmark(
     stamp: Optional[str] = None,
     artifact_base: Optional[str] = None,
 ) -> Dict[str, Any]:
+    vendor = profile.vendor
     norm = eval_synonyms.normalize
     timings: Dict[str, Any] = {"vendors": {}}
     vendor_keys = [vendor.key]
@@ -272,7 +313,7 @@ def run_blackbox_benchmark(
     )
 
     rows: List[Dict[str, Any]] = []
-    harness = MicrosoftPinyinHarness(**harness_kwargs)
+    harness = WindowsPinyinImeHarness(**harness_kwargs)
     launch_ms = 0.0
     self_check_ms = 0.0
     decode_ms = 0.0
@@ -282,7 +323,7 @@ def run_blackbox_benchmark(
         harness.start()
         launch_ms = round((time.perf_counter() - t_launch) * 1000, 2)
         t_check = time.perf_counter()
-        logger.info("[黑盒宿主 %s] 自检微软拼音与宿主焦点", vendor.key)
+        logger.info("[黑盒宿主 %s] 自检 %s 与宿主焦点", vendor.key, profile.display_name)
         harness.self_check()
         self_check_ms = round((time.perf_counter() - t_check) * 1000, 2)
         logger.info("[黑盒解码 %s] 开始: 前台按键 + Space 上屏，共 %d 句", vendor.key, len(prepared_vendor))
@@ -353,7 +394,13 @@ def run_blackbox_benchmark(
     stamp = stamp or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     payload = {
         "generated_at_utc": stamp,
-        "engine": {"type": "windows_ime_blackbox", "name": "Microsoft Pinyin", "host": "Notepad", "submit_key": "Space"},
+        "engine": {
+            "type": "windows_ime_blackbox",
+            "name": profile.engine_display_name,
+            "ime_key": profile.ime_key,
+            "host": "Notepad",
+            "submit_key": "Space",
+        },
         "corpus_file": str(corpus_path),
         "corpus_label": corpus_label,
         "vendors": [asdict(vendor)],
@@ -368,8 +415,17 @@ def run_blackbox_benchmark(
 
     if write_artifacts:
         t_write = time.perf_counter()
-        base = artifact_base or f"benchmark_microsoft_pinyin_{corpus_label}_{stamp}"
-        _write_single_artifacts(out_dir, base, payload, [vendor], corpus_label=corpus_label, corpus_path=corpus_path, eval_synonyms=eval_synonyms)
+        base = artifact_base or f"{profile.artifact_prefix}_{corpus_label}_{stamp}"
+        _write_single_artifacts(
+            out_dir,
+            base,
+            payload,
+            [vendor],
+            profile=profile,
+            corpus_label=corpus_label,
+            corpus_path=corpus_path,
+            eval_synonyms=eval_synonyms,
+        )
         timings["write_artifacts_ms"] = round((time.perf_counter() - t_write) * 1000, 2)
         payload["timings"] = timings
         (out_dir / f"{base}.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -381,7 +437,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     if sys.platform != "win32":
         raise SystemExit("benchmark_microsoft_pinyin.py only supports Windows.")
 
-    parser = argparse.ArgumentParser(description="Benchmark Microsoft Pinyin via Notepad black-box automation.")
+    parser = argparse.ArgumentParser(description="Benchmark a Windows Pinyin IME via Notepad black-box automation.")
+    parser.add_argument(
+        "--ime",
+        default="microsoft_pinyin",
+        help="Target IME profile (default: microsoft_pinyin). Supported: microsoft_pinyin, sogou_pinyin",
+    )
     parser.add_argument("--corpus", nargs="*", help="UTF-8 corpus file(s). Default: all data/corpus/*.txt")
     parser.add_argument("--out-dir", default="artifacts", help="Output directory (default: artifacts)")
     parser.add_argument("--label", help="Single-corpus artifact label override")
@@ -398,7 +459,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     out_dir = (root / args.out_dir).resolve()
     corpora = _corpus_inputs(root, args.corpus)
     eval_synonyms, eval_synonyms_path = init_eval_synonyms(root, args.eval_synonyms)
-    vendor = MICROSOFT_PINYIN_VENDOR
+    profile = _ime_profile(args.ime)
     stamp = args.stamp or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     harness_kwargs = {
         "launch_timeout_s": args.launch_timeout_s,
@@ -406,6 +467,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "inter_key_delay_s": max(0.0, args.inter_key_delay_ms / 1000.0),
         "commit_delay_s": max(0.0, args.commit_delay_ms / 1000.0),
     }
+    logger.info(
+        "[启动] 通用 Windows 拼音输入法黑盒评测 | 目标输入法: %s (%s) | 宿主: Notepad",
+        profile.display_name,
+        profile.ime_key,
+    )
+    if profile.ime_key == "sogou_pinyin":
+        logger.info("[启动] 请先确保前台可切换到搜狗拼音；脚本当前不会强制选择特定第三方 IME。")
 
     if len(corpora) == 1:
         corpus_path, stem = corpora[0]
@@ -413,7 +481,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         run_blackbox_benchmark(
             corpus_path,
             out_dir,
-            vendor,
+            profile,
             label,
             args.progress_every,
             eval_synonyms=eval_synonyms,
@@ -421,13 +489,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             harness_kwargs=harness_kwargs,
             write_artifacts=True,
             stamp=stamp,
-            artifact_base=f"benchmark_microsoft_pinyin_{label}_{stamp}",
+            artifact_base=f"{profile.artifact_prefix}_{label}_{stamp}",
         )
-        logger.info("[结束] 单语料黑盒评测完成 | 输出目录: %s", out_dir)
+        logger.info("[结束] 单语料黑盒评测完成 | 输入法: %s | 输出目录: %s", profile.display_name, out_dir)
         return 0
 
     wall_clock_start = time.perf_counter()
-    payloads: List[Dict[str, Any]] = []
     summary_by_corpus: Dict[str, Dict[str, Any]] = {}
     timings_by_corpus: Dict[str, Dict[str, Any]] = {}
     corpus_files: Dict[str, str] = {}
@@ -436,7 +503,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         payload = run_blackbox_benchmark(
             corpus_path,
             out_dir,
-            vendor,
+            profile,
             stem,
             args.progress_every,
             eval_synonyms=eval_synonyms,
@@ -445,16 +512,22 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             write_artifacts=False,
             stamp=stamp,
         )
-        payloads.append(payload)
         summary_by_corpus[stem] = payload["summary"]
         timings_by_corpus[stem] = payload["timings"]
         corpus_files[stem] = str(corpus_path)
         all_rows.extend(payload["per_sentence"])
 
+    vendor = profile.vendor
     summary_overall = aggregate_summaries(summary_by_corpus, [vendor.key])
     combined_payload = {
         "generated_at_utc": stamp,
-        "engine": {"type": "windows_ime_blackbox", "name": "Microsoft Pinyin", "host": "Notepad", "submit_key": "Space"},
+        "engine": {
+            "type": "windows_ime_blackbox",
+            "name": profile.engine_display_name,
+            "ime_key": profile.ime_key,
+            "host": "Notepad",
+            "submit_key": "Space",
+        },
         "corpus_files": corpus_files,
         "vendors": [asdict(vendor)],
         "summary_by_corpus": summary_by_corpus,
@@ -467,9 +540,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             "rules_summary": eval_synonyms.summary_line(),
         },
     }
-    base = f"benchmark_microsoft_pinyin_all_corpus_{stamp}"
-    _write_combined_artifacts(out_dir, base, combined_payload, [vendor])
-    logger.info("[结束] 多语料黑盒评测完成 | 输出目录: %s", out_dir)
+    base = f"{profile.artifact_prefix}_all_corpus_{stamp}"
+    _write_combined_artifacts(out_dir, base, combined_payload, [vendor], profile)
+    logger.info("[结束] 多语料黑盒评测完成 | 输入法: %s | 输出目录: %s", profile.display_name, out_dir)
     return 0
 
 

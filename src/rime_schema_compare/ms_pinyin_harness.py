@@ -1,4 +1,4 @@
-"""Black-box Microsoft Pinyin automation via Windows APIs."""
+"""Black-box Windows Pinyin IME automation via Windows APIs."""
 
 from __future__ import annotations
 
@@ -59,8 +59,8 @@ def _wait_until(predicate, timeout_s: float, poll_s: float = 0.05) -> bool:
     return False
 
 
-class MicrosoftPinyinHarness:
-    """Drive Microsoft Pinyin in a foreground Notepad window."""
+class WindowsPinyinImeHarness:
+    """Drive a foreground Windows Pinyin IME in a Notepad window."""
 
     def __init__(
         self,
@@ -137,7 +137,7 @@ class MicrosoftPinyinHarness:
             raise RuntimeError("host_window_unavailable")
         self.reset_host()
         if not self._ensure_chinese_mode():
-            raise RuntimeError("microsoft_pinyin_not_ready")
+            raise RuntimeError("ime_not_ready")
         user32.SendMessageW(self._edit_hwnd, WM_SETTEXT, 0, "abc")
         time.sleep(0.05)
         committed = self._read_host_text().strip()
@@ -153,7 +153,7 @@ class MicrosoftPinyinHarness:
         except Exception as exc:
             return BlackboxDecodeResult("", False, f"reset_failed:{exc}")
         if not self._ensure_chinese_mode():
-            return BlackboxDecodeResult("", False, "microsoft_pinyin_not_ready")
+            return BlackboxDecodeResult("", False, "ime_not_ready")
         self.reset_host()
         self._focus_host()
         try:
@@ -366,3 +366,7 @@ class MicrosoftPinyinHarness:
         buf = ctypes.create_unicode_buffer(length + 1)
         user32.SendMessageW(self._edit_hwnd, WM_GETTEXT, length + 1, buf)
         return buf.value
+
+
+# Backward-compatible alias for older imports.
+MicrosoftPinyinHarness = WindowsPinyinImeHarness
