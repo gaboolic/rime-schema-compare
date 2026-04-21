@@ -7,6 +7,8 @@
 
 [查看闭源输入法最新评测结果](report/other_latest.md)
 
+最新评测结果表明，[白霜拼音](https://github.com/gaboolic/rime-frost)以及[万象拼音](https://github.com/amzxyz/rime_wanxiang)使用ngrams模型均超越了微软拼音。
+
 ## 各套方案说明
 
 默认参与对比的方案在 `src/rime_schema_compare/config.py` 的 `DEFAULT_VENDORS` 中定义：每个条目包含 **vendor 键**（命令行与报表列名）、**子目录**、以及 **主 schema_id**（librime 里选用的方案 ID）。
