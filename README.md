@@ -3,9 +3,9 @@
 在 **Windows** 上用 **Python + librime**（`rime.dll`，例如小狼毫自带）对比多套 Rime 词库方案的 **整句解码准确率**。
 
 ## 最新评测结果 
-[查看rime多方案最新评测结果](report/latest.md)
+[查看rime多方案最新评测结果（调用librime）](report/latest.md)
 
-[查看闭源输入法最新评测结果](report/other_latest.md)
+[查看其他windows输入法最新评测结果（黑盒模拟按键的方式测试）](report/other_latest.md)
 
 最新评测结果表明，[白霜拼音](https://github.com/gaboolic/rime-frost)以及[万象拼音](https://github.com/amzxyz/rime_wanxiang)使用ngrams模型均超越了微软拼音。
 
@@ -51,7 +51,7 @@ pip install -r requirements.txt
 
 ### 运行命令
 
-在仓库根目录执行（PowerShell / cmd 示例）：
+通过librime测试各个rime输入方案，可在仓库根目录执行（PowerShell / cmd 示例）：
 
 ```
 ./scripts/run_test.ps1
@@ -62,17 +62,23 @@ pip install -r requirements.txt
 Windows 下可单独跑系统/第三方拼音输入法的 GUI 黑盒评测。推荐使用通用入口：
 
 ```bash
-python scripts/benchmark_windows_ime.py --ime microsoft_pinyin
-python scripts/benchmark_windows_ime.py --ime microsoft_pinyin --corpus data/corpus/news.txt
-python scripts/benchmark_windows_ime.py --ime sogou_pinyin
+python scripts/benchmark_windows_pinyin.py --ime microsoft_pinyin
+python scripts/benchmark_windows_pinyin.py --ime microsoft_pinyin --corpus data/corpus/news.txt
+python scripts/benchmark_windows_pinyin.py --ime sogou_pinyin
+python scripts/benchmark_windows_pinyin.py --ime microsoft_pinyin sogou_pinyin
 ```
 
-兼容旧用法：`python scripts/benchmark_microsoft_pinyin.py ...` 仍可用，默认等价于 `--ime microsoft_pinyin`。
+也可以用 PowerShell 入口一次同时评测微软拼音和搜狗拼音，并生成 `report/other_latest.md`：
+
+```bash
+./scripts/run_blackbox_test.ps1
+```
 
 默认口径固定为：
 
 - 宿主程序是 `Notepad`
 - 输入法由 `--ime` 指定，目前支持 `microsoft_pinyin`、`sogou_pinyin`
+- 先预处理全部语料，再按输入法整批运行；例如先完整跑微软拼音，再完整跑搜狗拼音
 - 对每句发送**连续全拼**
 - 按 `Space` 提交第 1 候选
 - 读取最终上屏文本，统计整句准确率与字级准确率
@@ -82,7 +88,7 @@ python scripts/benchmark_windows_ime.py --ime sogou_pinyin
 - 这是 **Windows 系统输入法黑盒评测**，不是像 `librime` 那样的进程内调用。
 - 结果会受到 **Windows 版本、输入法版本、是否联网、个性化词频、当前系统输入法状态** 的影响。
 - 跑黑盒评测时需要保持前台焦点稳定，不要手动切窗口或输入。
-- 当前脚本会尽力切到 `zh-CN` 输入并打开 IME，但对第三方输入法（如搜狗）**不会强制切换到指定品牌**；跑 `--ime sogou_pinyin` 前，建议先手动确认当前前台输入法就是搜狗拼音。
+- 当前脚本会先解析系统里的 `InputMethodTips`，再切换到目标输入法；默认通过 Windows API 设置目标输入法并校验已切到正确 profile。若机器上的输入法顺序或系统行为有变化，黑盒结果仍可能出现波动。
 
 ### 输出文件（`artifacts/`）
 

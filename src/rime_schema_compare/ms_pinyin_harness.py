@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import ctypes
+import json
+import re
 import subprocess
 import time
 from dataclasses import dataclass
-from pathlib import Path
-from typing import List, Optional, Set
+import winreg
+from typing import Any, Dict, List, Optional, Set
 
 
 if ctypes.sizeof(ctypes.c_void_p) == 8:
@@ -28,6 +30,7 @@ WM_INPUTLANGCHANGEREQUEST = 0x0050
 WM_CHAR = 0x0102
 KEYEVENTF_KEYUP = 0x0002
 KLF_ACTIVATE = 0x00000001
+VK_LWIN = 0x5B
 VK_SPACE = 0x20
 VK_ESCAPE = 0x1B
 
@@ -50,6 +53,129 @@ class BlackboxDecodeResult:
     reason: str
 
 
+@dataclass(frozen=True)
+class InstalledImeProfile:
+    ime_key: str
+    display_name: str
+    input_tip: str
+    tip_guid: str
+    profile_guid: str
+    description: str
+
+    @property
+    def list_item_text(self) -> str:
+        return self.description or self.display_name
+
+
+def _normalize_guid(value: str) -> str:
+    return str(value or "").strip().strip("{}").upper()
+
+
+_TSF_HELPER_CSHARP = r"""
+using System;
+using System.Runtime.InteropServices;
+
+namespace CursorTsfInterop {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct TF_INPUTPROCESSORPROFILE {
+        public uint dwProfileType;
+        public ushort langid;
+        public Guid clsid;
+        public Guid guidProfile;
+        public Guid catid;
+        public IntPtr hklSubstitute;
+        public uint dwCaps;
+        public IntPtr hkl;
+        public uint dwFlags;
+    }
+
+    [ComImport, Guid("71C6E74C-0F28-11D8-A82A-00065B84435C"), InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+    public interface ITfInputProcessorProfileMgr {
+        [PreserveSig]
+        int ActivateProfile(uint dwProfileType, ushort langid, ref Guid clsid, ref Guid guidProfile, IntPtr hkl, uint dwFlags);
+
+        [PreserveSig]
+        int DeactivateProfile(uint dwProfileType, ushort langid, ref Guid clsid, ref Guid guidProfile, IntPtr hkl, uint dwFlags);
+
+        [PreserveSig]
+        int GetProfile(uint dwProfileType, ushort langid, ref Guid clsid, ref Guid guidProfile, IntPtr hkl, out TF_INPUTPROCESSORPROFILE profile);
+
+        [PreserveSig]
+        int EnumProfiles(ushort langid, out IntPtr enumProfile);
+
+        [PreserveSig]
+        int ReleaseInputProcessor(ref Guid clsid, ushort langid, ref Guid guidProfile);
+
+        [PreserveSig]
+        int RegisterProfile(ref Guid clsid, ushort langid, ref Guid guidProfile, string description, uint descriptionLength, string iconFile, uint iconFileLength, uint iconIndex);
+
+        [PreserveSig]
+        int UnregisterProfile(ref Guid clsid, ushort langid, ref Guid guidProfile, uint flags);
+
+        [PreserveSig]
+        int GetActiveProfile(ref Guid catid, out TF_INPUTPROCESSORPROFILE profile);
+    }
+
+    [ComImport, Guid("33C53A50-F456-4884-B049-85FD643ECFED")]
+    public class TF_InputProcessorProfiles {
+    }
+
+    public static class TsfInterop {
+        private static readonly Guid GuidTfcatTipKeyboard = new Guid("34745C63-B2F0-4784-8B67-5E12C8701A31");
+        private const uint TF_PROFILETYPE_INPUTPROCESSOR = 1;
+        private const uint TF_IPPMF_FORSESSION = 0x20000000;
+        private const uint TF_IPPMF_DONTCARECURRENTINPUTLANGUAGE = 0x00000004;
+
+        public static string GetActiveProfileJson() {
+            var mgr = (ITfInputProcessorProfileMgr)new TF_InputProcessorProfiles();
+            var catid = GuidTfcatTipKeyboard;
+            TF_INPUTPROCESSORPROFILE profile;
+            int hr = mgr.GetActiveProfile(ref catid, out profile);
+            if (hr != 0) {
+                Marshal.ThrowExceptionForHR(hr);
+            }
+            return string.Format(
+                "{{\"dwProfileType\":{0},\"langid\":{1},\"clsid\":\"{2}\",\"guidProfile\":\"{3}\",\"catid\":\"{4}\",\"hkl\":\"0x{5:X}\",\"dwFlags\":{6}}}",
+                profile.dwProfileType,
+                profile.langid,
+                profile.clsid.ToString("D").ToUpperInvariant(),
+                profile.guidProfile.ToString("D").ToUpperInvariant(),
+                profile.catid.ToString("D").ToUpperInvariant(),
+                profile.hkl.ToInt64(),
+                profile.dwFlags
+            );
+        }
+
+        public static void ActivateTipProfile(string tipGuid, string profileGuid, ushort langid) {
+            var mgr = (ITfInputProcessorProfileMgr)new TF_InputProcessorProfiles();
+            var clsid = new Guid(tipGuid);
+            var guidProfile = new Guid(profileGuid);
+            int hr = mgr.ActivateProfile(
+                TF_PROFILETYPE_INPUTPROCESSOR,
+                langid,
+                ref clsid,
+                ref guidProfile,
+                IntPtr.Zero,
+                TF_IPPMF_FORSESSION | TF_IPPMF_DONTCARECURRENTINPUTLANGUAGE
+            );
+            if (hr != 0) {
+                Marshal.ThrowExceptionForHR(hr);
+            }
+        }
+    }
+}
+"""
+
+
+def _tsf_powershell(command: str) -> str:
+    return (
+        'Add-Type -Language CSharp -TypeDefinition @"\n'
+        + _TSF_HELPER_CSHARP
+        + '\n"@;\n'
+        + command
+    )
+
+
 def _wait_until(predicate, timeout_s: float, poll_s: float = 0.05) -> bool:
     deadline = time.perf_counter() + timeout_s
     while time.perf_counter() < deadline:
@@ -57,6 +183,231 @@ def _wait_until(predicate, timeout_s: float, poll_s: float = 0.05) -> bool:
             return True
         time.sleep(poll_s)
     return False
+
+
+def _run_powershell(command: str) -> str:
+    proc = subprocess.run(
+        ["powershell", "-NoProfile", "-Command", command],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise RuntimeError((proc.stderr or proc.stdout or "").strip() or "powershell_command_failed")
+    return (proc.stdout or "").strip()
+
+
+def _run_powershell_json(command: str):
+    raw = _run_powershell(command)
+    if not raw:
+        return None
+    return json.loads(raw)
+
+
+class WindowsImeSwitcher:
+    _TIP_RE = re.compile(
+        r"^(?P<lang>[0-9A-Fa-f]+):\{(?P<tip>[^}]+)\}\{(?P<profile>[^}]+)\}$"
+    )
+    _IME_PATTERNS = {
+        "microsoft_pinyin": ("microsoft pinyin", "微软拼音"),
+        "sogou_pinyin": ("搜狗拼音", "sogou"),
+    }
+    _IME_DISPLAY = {
+        "microsoft_pinyin": "微软拼音",
+        "sogou_pinyin": "搜狗拼音",
+    }
+
+    def __init__(self) -> None:
+        self._language_payload = self._load_language_payload()
+        self._profiles = self._build_profiles(self._language_payload)
+        self._active_input_tip = self.get_default_input_tip()
+
+    def list_installed_profiles(self, language_tag: str = "zh-Hans-CN") -> List[InstalledImeProfile]:
+        return [p for p in self._profiles if p.input_tip.startswith("0804:")]
+
+    def list_input_method_texts(self, language_tag: str = "zh-Hans-CN") -> List[str]:
+        return [p.list_item_text for p in self.list_installed_profiles(language_tag)]
+
+    def resolve_profile(self, ime_key: str) -> InstalledImeProfile:
+        for profile in self._profiles:
+            if profile.ime_key == ime_key:
+                return profile
+        raise RuntimeError(f"ime_profile_not_found:{ime_key}")
+
+    def get_default_input_tip(self) -> str:
+        payload = _run_powershell_json("Get-WinDefaultInputMethodOverride | ConvertTo-Json -Depth 3")
+        if isinstance(payload, dict):
+            return str(payload.get("InputMethodTip") or payload.get("InputTip") or "").strip()
+        if isinstance(payload, str):
+            return payload.strip()
+        return ""
+
+    def get_active_profile(self) -> Optional[InstalledImeProfile]:
+        payload = self.get_active_profile_payload()
+        active_tip = _normalize_guid(payload.get("tip_guid"))
+        active_profile = _normalize_guid(payload.get("profile_guid"))
+        for profile in self._profiles:
+            if profile.tip_guid == active_tip and profile.profile_guid == active_profile:
+                return profile
+        return None
+
+    def get_active_profile_payload(self) -> Dict[str, Any]:
+        payload = _run_powershell_json(
+            _tsf_powershell('[CursorTsfInterop.TsfInterop]::GetActiveProfileJson()')
+        )
+        if not isinstance(payload, dict):
+            raise RuntimeError("active_ime_profile_unavailable")
+        return {
+            "dw_profile_type": int(payload.get("dwProfileType") or 0),
+            "langid": int(payload.get("langid") or 0),
+            "tip_guid": _normalize_guid(payload.get("clsid") or ""),
+            "profile_guid": _normalize_guid(payload.get("guidProfile") or ""),
+            "catid": _normalize_guid(payload.get("catid") or ""),
+            "hkl": str(payload.get("hkl") or ""),
+            "dw_flags": int(payload.get("dwFlags") or 0),
+        }
+
+    def open_input_method_list(self) -> None:
+        self._send_win_space()
+        time.sleep(0.2)
+
+    def close_input_method_list(self) -> None:
+        self._send_vk(VK_ESCAPE)
+        time.sleep(0.05)
+
+    def activate_profile(self, ime_key: str, focus_callback=None) -> InstalledImeProfile:
+        profile = self.resolve_profile(ime_key)
+        current = self.get_active_profile()
+        if current is not None and (
+            current.ime_key == profile.ime_key
+            and current.tip_guid == profile.tip_guid
+            and current.profile_guid == profile.profile_guid
+        ):
+            self._active_input_tip = current.input_tip
+            return current
+        if focus_callback is not None:
+            focus_callback()
+        available_items = self.list_input_method_texts()
+        if profile.list_item_text not in available_items:
+            raise RuntimeError(f"ime_list_item_not_found:{ime_key}")
+        langid = int(profile.input_tip.split(":", 1)[0], 16)
+        for _ in range(3):
+            _run_powershell(
+                _tsf_powershell(
+                    f"[CursorTsfInterop.TsfInterop]::ActivateTipProfile('{profile.tip_guid}', '{profile.profile_guid}', {langid})"
+                )
+            )
+            if focus_callback is not None:
+                focus_callback()
+            confirmed = self._wait_for_active_profile(profile, timeout_s=1.5)
+            if confirmed is not None:
+                self._active_input_tip = confirmed.input_tip
+                return confirmed
+            time.sleep(0.1)
+        raise RuntimeError(f"ime_switch_not_confirmed:{ime_key}")
+
+    def _wait_for_active_profile(
+        self, expected: InstalledImeProfile, timeout_s: float = 3.0
+    ) -> Optional[InstalledImeProfile]:
+        matched: Optional[InstalledImeProfile] = None
+
+        def probe() -> bool:
+            nonlocal matched
+            current = self.get_active_profile()
+            if current is None:
+                return False
+            if (
+                current.ime_key == expected.ime_key
+                and current.tip_guid == expected.tip_guid
+                and current.profile_guid == expected.profile_guid
+            ):
+                matched = current
+                return True
+            return False
+
+        if _wait_until(probe, timeout_s=timeout_s, poll_s=0.1):
+            return matched
+        return None
+
+    def _ime_key_for_description(self, description: str) -> Optional[str]:
+        desc = (description or "").lower()
+        for ime_key, patterns in self._IME_PATTERNS.items():
+            if any(p.lower() in desc for p in patterns):
+                return ime_key
+        return None
+
+    def _lookup_profile_description(self, tip_guid: str, profile_guid: str) -> str:
+        key_paths = [
+            rf"SOFTWARE\Microsoft\CTF\TIP\{{{tip_guid}}}\LanguageProfile\0x00000804\{{{profile_guid}}}",
+            rf"SOFTWARE\WOW6432Node\Microsoft\CTF\TIP\{{{tip_guid}}}\LanguageProfile\0x00000804\{{{profile_guid}}}",
+        ]
+        hives = (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE)
+        for hive in hives:
+            for subkey in key_paths:
+                try:
+                    with winreg.OpenKey(hive, subkey) as k:
+                        for value_name in ("Description", "Display Description", "DisplayDescription"):
+                            try:
+                                value, _ = winreg.QueryValueEx(k, value_name)
+                            except FileNotFoundError:
+                                continue
+                            if value:
+                                return str(value)
+                except FileNotFoundError:
+                    continue
+        return ""
+
+    def _load_language_payload(self):
+        payload = _run_powershell_json("Get-WinUserLanguageList | ConvertTo-Json -Depth 5")
+        if payload is None:
+            return []
+        return payload if isinstance(payload, list) else [payload]
+
+    def _build_profiles(self, rows) -> List[InstalledImeProfile]:
+        out: List[InstalledImeProfile] = []
+        for row in rows:
+            if not isinstance(row, dict):
+                continue
+            raw_tips = row.get("InputMethodTips") or []
+            if not isinstance(raw_tips, list):
+                continue
+            for tip in raw_tips:
+                m = self._TIP_RE.match(str(tip))
+                if not m:
+                    continue
+                tip_guid = m.group("tip").upper()
+                profile_guid = m.group("profile").upper()
+                desc = self._lookup_profile_description(tip_guid, profile_guid)
+                ime_key = self._ime_key_for_description(desc)
+                if not ime_key:
+                    continue
+                out.append(
+                    InstalledImeProfile(
+                        ime_key=ime_key,
+                        display_name=self._IME_DISPLAY[ime_key],
+                        input_tip=str(tip),
+                        tip_guid=tip_guid,
+                        profile_guid=profile_guid,
+                        description=desc,
+                    )
+                )
+        return out
+
+    def _send_win_space(self) -> None:
+        user32.keybd_event(VK_LWIN, 0, 0, 0)
+        time.sleep(0.01)
+        user32.keybd_event(VK_SPACE, 0, 0, 0)
+        time.sleep(0.01)
+        user32.keybd_event(VK_SPACE, 0, KEYEVENTF_KEYUP, 0)
+        time.sleep(0.01)
+        user32.keybd_event(VK_LWIN, 0, KEYEVENTF_KEYUP, 0)
+
+    def _send_vk(self, vk: int) -> None:
+        user32.keybd_event(vk, 0, 0, 0)
+        time.sleep(0.005)
+        user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
 
 
 class WindowsPinyinImeHarness:
@@ -131,6 +482,11 @@ class WindowsPinyinImeHarness:
         self._press_escape()
         user32.SendMessageW(self._edit_hwnd, WM_SETTEXT, 0, "")
         time.sleep(0.05)
+
+    def focus_host(self) -> None:
+        if not self._refresh_window_handles():
+            raise RuntimeError("host_window_unavailable")
+        self._focus_host()
 
     def self_check(self) -> None:
         if not self._refresh_window_handles():
@@ -277,7 +633,6 @@ class WindowsPinyinImeHarness:
         for _ in range(self.max_prepare_attempts):
             try:
                 self._focus_host()
-                self._activate_chinese_layout()
                 self._open_ime()
                 time.sleep(0.08)
                 if self._probe_hanzi_commit():
