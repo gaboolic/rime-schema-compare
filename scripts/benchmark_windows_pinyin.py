@@ -92,6 +92,17 @@ class PreparedCorpus:
 IME_PROFILES: Dict[str, ImeProfile] = {
     "microsoft_pinyin": ImeProfile("microsoft_pinyin", "微软拼音", "Microsoft Pinyin"),
     "sogou_pinyin": ImeProfile("sogou_pinyin", "搜狗拼音", "Sogou Pinyin"),
+    "shouxin_pinyin": ImeProfile("shouxin_pinyin", "手心输入法", "Shouxin Pinyin"),
+}
+
+IME_HARNESS_DEFAULTS: Dict[str, Dict[str, Any]] = {
+    # 手心输入法首次唤起候选窗稍慢，使用更稳定的探针和等待参数。
+    "shouxin_pinyin": {
+        "probe_input": "ni",
+        "max_prepare_attempts": 5,
+        "commit_delay_s": 0.30,
+        "settle_timeout_s": 5.0,
+    }
 }
 
 
@@ -144,6 +155,20 @@ def _report_title(profiles: Sequence[ImeProfile]) -> str:
     if len(profiles) == 1:
         return f"{profiles[0].display_name}黑盒整句评测 — 摘要报告"
     return "Windows 拼音输入法黑盒整句评测 — 摘要报告"
+
+
+def _harness_kwargs_for_profile(profile: ImeProfile, base_kwargs: Dict[str, Any]) -> Dict[str, Any]:
+    kwargs = dict(base_kwargs)
+    overrides = IME_HARNESS_DEFAULTS.get(profile.ime_key)
+    if not overrides:
+        return kwargs
+    for key in ("commit_delay_s", "settle_timeout_s"):
+        if key in overrides:
+            kwargs[key] = max(float(kwargs.get(key, 0.0)), float(overrides[key]))
+    for key in ("probe_input", "max_prepare_attempts"):
+        if key in overrides:
+            kwargs[key] = overrides[key]
+    return kwargs
 
 
 def _compare_title(profiles: Sequence[ImeProfile]) -> str:
@@ -833,7 +858,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--ime",
         nargs="+",
         default=["microsoft_pinyin"],
-        help="Target IME profile(s). Supported: microsoft_pinyin, sogou_pinyin",
+        help="Target IME profile(s). Supported: microsoft_pinyin, sogou_pinyin, shouxin_pinyin",
     )
     parser.add_argument("--corpus", nargs="*", help="UTF-8 corpus file(s). Default: all data/corpus/*.txt")
     parser.add_argument("--out-dir", default="artifacts", help="Output directory (default: artifacts)")
@@ -881,7 +906,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
             args.progress_every,
             eval_synonyms=eval_synonyms,
             eval_synonyms_path=eval_synonyms_path,
-            harness_kwargs=harness_kwargs,
+            harness_kwargs=_harness_kwargs_for_profile(profile, harness_kwargs),
             before_self_check=lambda h, ime_key=profile.ime_key: switcher.activate_profile(ime_key, focus_callback=h.focus_host),
             stamp=stamp,
         )

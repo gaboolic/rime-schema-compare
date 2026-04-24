@@ -213,10 +213,12 @@ class WindowsImeSwitcher:
     _IME_PATTERNS = {
         "microsoft_pinyin": ("microsoft pinyin", "微软拼音"),
         "sogou_pinyin": ("搜狗拼音", "sogou"),
+        "shouxin_pinyin": ("手心输入法", "shouxin"),
     }
     _IME_DISPLAY = {
         "microsoft_pinyin": "微软拼音",
         "sogou_pinyin": "搜狗拼音",
+        "shouxin_pinyin": "手心输入法",
     }
 
     def __init__(self) -> None:

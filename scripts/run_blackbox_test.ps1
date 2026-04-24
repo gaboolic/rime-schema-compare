@@ -2,7 +2,8 @@ param(
     [string]$ArtifactsDir = "artifacts/blackbox",
     [string]$ReportDir = "report",
     [string]$ReportName = "other_latest.md",
-    [int]$ProgressEvery = 0
+    [int]$ProgressEvery = 0,
+    [string[]]$Ime = @("microsoft_pinyin", "sogou_pinyin")
 )
 
 $ErrorActionPreference = "Stop"
@@ -18,17 +19,17 @@ $env:PYTHONPATH = Join-Path $repoRoot "src"
 
 Push-Location $repoRoot
 try {
-    & python "scripts/benchmark_windows_pinyin.py" --ime microsoft_pinyin sogou_pinyin --progress-every $ProgressEvery --out-dir $artifactsPath
+    & python "scripts/benchmark_windows_pinyin.py" --ime $Ime --progress-every $ProgressEvery --out-dir $artifactsPath
     if ($LASTEXITCODE -ne 0) {
         throw "benchmark_windows_pinyin.py exited with code $LASTEXITCODE"
     }
 
-    $latestReport = Get-ChildItem -Path $artifactsPath -Filter "benchmark_windows_pinyin*_report.txt" -File |
+    $latestReport = Get-ChildItem -Path $artifactsPath -Filter "benchmark*_report.txt" -File |
         Sort-Object LastWriteTimeUtc -Descending |
         Select-Object -First 1
 
     if (-not $latestReport) {
-        throw "No benchmark_windows_pinyin*_report.txt file was generated under '$artifactsPath'."
+        throw "No benchmark*_report.txt file was generated under '$artifactsPath'."
     }
 
     $generatedAt = Get-Date -Format "yyyy-MM-dd HH:mm:ss zzz"
