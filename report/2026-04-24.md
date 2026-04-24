@@ -1,13 +1,13 @@
 ﻿# Rime 评测结果
 
-- 生成时间: 2026-04-24 23:32:57 +08:00
-- 来源文件: `benchmark_all_corpus_20260424T153135Z_report.txt`
+- 生成时间: 2026-04-24 23:53:45 +08:00
+- 来源文件: `benchmark_all_corpus_20260424T155207Z_report.txt`
 
 ## Vendor 子模块版本
 
-- `vendor/rime-frost`: `84878b8c6b2e2fdc4f11698ec236402ef57ac1fa`
+- `vendor/rime-frost`: `bb9365e0b32da3038de43d30bd016d22ad184270`
 - `vendor/rime-ice`: `2bd2983c6c74ea49b3a013f150ade7f3b8a27515`
-- `vendor/rime_wanxiang` (`wanxiang`): `6299415ad5ebd203df5e8d9bc9c6a9929d4806d6`
+- `vendor/rime_wanxiang` (`wanxiang`): `618fb082dac7b7e9bb45820811202e881be92bff`
 - `vendor/rime-wubi-sentence`: `c3b26af601e41de49227f86633df00985e8d8a77`
 
 ## 评测摘要
@@ -16,7 +16,7 @@
 ========================================================================
 Rime 多方案整句评测 — 摘要报告
 ========================================================================
-生成时间 (UTC): 20260424T153135Z
+生成时间 (UTC): 20260424T155207Z
 rime.dll: D:\vscode\rime_projs\rime-schema-compare\lib\rime.dll
 模式: 全部语料 (data/corpus/*.txt)
 
@@ -59,9 +59,9 @@ rime.dll: D:\vscode\rime_projs\rime-schema-compare\lib\rime.dll
     文字正确率(逐句平均): 94.98%
 
   [wanxiang]
-    句子正确率: 47.97%  (118/246 句完全匹配)
-    文字正确率: 88.78%  (全语料金文加权，基于 Levenshtein)
-    文字正确率(逐句平均): 89.06%
+    句子正确率: 48.37%  (119/246 句完全匹配)
+    文字正确率: 88.89%  (全语料金文加权，基于 Levenshtein)
+    文字正确率(逐句平均): 89.14%
 
   [rime_wanxiang_with_gram]
     句子正确率: 66.67%  (164/246 句完全匹配)
@@ -319,9 +319,9 @@ rime.dll: D:\vscode\rime_projs\rime-schema-compare\lib\rime.dll
     文字正确率(逐句平均): 100.0%
 
   [wanxiang]
-    句子正确率: 20.0%  (1/5 句完全匹配)
-    文字正确率: 79.37%  (全语料金文加权，基于 Levenshtein)
-    文字正确率(逐句平均): 79.67%
+    句子正确率: 40.0%  (2/5 句完全匹配)
+    文字正确率: 84.13%  (全语料金文加权，基于 Levenshtein)
+    文字正确率(逐句平均): 83.96%
 
   [rime_wanxiang_with_gram]
     句子正确率: 100.0%  (5/5 句完全匹配)
@@ -339,79 +339,79 @@ rime.dll: D:\vscode\rime_projs\rime-schema-compare\lib\rime.dll
     文字正确率(逐句平均): 97.89%
 
 ========================================================================
-【总耗时】全流程墙钟约 82037.55 ms（多语料）
+【总耗时】全流程墙钟约 97503.09 ms（多语料）
 
 【各语料耗时】
   · news
-    读取文件: 0.09 ms
-    分句: 0.16 ms
-    预过滤: 0.82 ms
-    [mingyuepinyin] 输入串: 2.09 ms, librime 加载: 354.79 ms, 开会话+选方案: 34.33 ms, 逐句解码: 107.75 ms
-    [mingyuepinyin_with_gram] 输入串: 2.0 ms, librime 加载: 328.36 ms, 开会话+选方案: 22.95 ms, 逐句解码: 125.49 ms
-    [rime_frost] 输入串: 1.94 ms, librime 加载: 6873.65 ms, 开会话+选方案: 66.56 ms, 逐句解码: 615.25 ms
-    [rime_frost_with_gram] 输入串: 2.03 ms, librime 加载: 600.14 ms, 开会话+选方案: 61.29 ms, 逐句解码: 604.92 ms
-    [rime_ice] 输入串: 2.65 ms, librime 加载: 1106.86 ms, 开会话+选方案: 35.04 ms, 逐句解码: 102.4 ms
-    [rime_ice_with_gram] 输入串: 1.89 ms, librime 加载: 1075.39 ms, 开会话+选方案: 54.71 ms, 逐句解码: 114.9 ms
-    [rime_wanxiang_with_gram] 输入串: 1.92 ms, librime 加载: 367.39 ms, 开会话+选方案: 1794.05 ms, 逐句解码: 1004.42 ms
-    [rime_wubi_sentens_wubi86] 输入串: 79.05 ms, librime 加载: 835.65 ms, 开会话+选方案: 835.61 ms, 逐句解码: 102.74 ms
-    [rime_wubi_sentens_wubi86_with_gram] 输入串: 80.28 ms, librime 加载: 815.12 ms, 开会话+选方案: 718.43 ms, 逐句解码: 113.23 ms
-    [wanxiang] 输入串: 1.93 ms, librime 加载: 377.15 ms, 开会话+选方案: 1807.7 ms, 逐句解码: 1000.43 ms
+    读取文件: 0.12 ms
+    分句: 0.17 ms
+    预过滤: 0.86 ms
+    [mingyuepinyin] 输入串: 2.14 ms, librime 加载: 370.34 ms, 开会话+选方案: 34.21 ms, 逐句解码: 106.92 ms
+    [mingyuepinyin_with_gram] 输入串: 1.9 ms, librime 加载: 349.25 ms, 开会话+选方案: 16.94 ms, 逐句解码: 124.16 ms
+    [rime_frost] 输入串: 1.92 ms, librime 加载: 10412.55 ms, 开会话+选方案: 70.56 ms, 逐句解码: 657.87 ms
+    [rime_frost_with_gram] 输入串: 1.93 ms, librime 加载: 620.68 ms, 开会话+选方案: 62.23 ms, 逐句解码: 593.52 ms
+    [rime_ice] 输入串: 1.97 ms, librime 加载: 1145.64 ms, 开会话+选方案: 31.62 ms, 逐句解码: 101.74 ms
+    [rime_ice_with_gram] 输入串: 1.98 ms, librime 加载: 1097.27 ms, 开会话+选方案: 39.99 ms, 逐句解码: 122.9 ms
+    [rime_wanxiang_with_gram] 输入串: 1.96 ms, librime 加载: 374.38 ms, 开会话+选方案: 2796.22 ms, 逐句解码: 1094.44 ms
+    [rime_wubi_sentens_wubi86] 输入串: 81.4 ms, librime 加载: 847.5 ms, 开会话+选方案: 388.41 ms, 逐句解码: 118.02 ms
+    [rime_wubi_sentens_wubi86_with_gram] 输入串: 80.0 ms, librime 加载: 811.55 ms, 开会话+选方案: 402.28 ms, 逐句解码: 131.55 ms
+    [wanxiang] 输入串: 2.11 ms, librime 加载: 14579.08 ms, 开会话+选方案: 1367.7 ms, 逐句解码: 1126.37 ms
   · novel
-    读取文件: 0.13 ms
-    分句: 0.39 ms
-    预过滤: 0.3 ms
-    [mingyuepinyin] 输入串: 8.95 ms, librime 加载: 365.05 ms, 开会话+选方案: 36.16 ms, 逐句解码: 216.9 ms
-    [mingyuepinyin_with_gram] 输入串: 7.63 ms, librime 加载: 341.29 ms, 开会话+选方案: 32.11 ms, 逐句解码: 257.67 ms
-    [rime_frost] 输入串: 12.35 ms, librime 加载: 873.62 ms, 开会话+选方案: 61.62 ms, 逐句解码: 2000.07 ms
-    [rime_frost_with_gram] 输入串: 7.35 ms, librime 加载: 604.74 ms, 开会话+选方案: 68.04 ms, 逐句解码: 2072.15 ms
-    [rime_ice] 输入串: 7.17 ms, librime 加载: 1101.31 ms, 开会话+选方案: 31.95 ms, 逐句解码: 263.69 ms
-    [rime_ice_with_gram] 输入串: 7.54 ms, librime 加载: 1087.69 ms, 开会话+选方案: 34.42 ms, 逐句解码: 350.8 ms
-    [rime_wanxiang_with_gram] 输入串: 7.81 ms, librime 加载: 414.42 ms, 开会话+选方案: 1356.19 ms, 逐句解码: 2331.93 ms
-    [rime_wubi_sentens_wubi86] 输入串: 26.86 ms, librime 加载: 862.34 ms, 开会话+选方案: 437.78 ms, 逐句解码: 355.07 ms
-    [rime_wubi_sentens_wubi86_with_gram] 输入串: 22.59 ms, librime 加载: 829.81 ms, 开会话+选方案: 399.61 ms, 逐句解码: 436.2 ms
-    [wanxiang] 输入串: 8.27 ms, librime 加载: 434.0 ms, 开会话+选方案: 1379.51 ms, 逐句解码: 2359.19 ms
+    读取文件: 0.18 ms
+    分句: 0.4 ms
+    预过滤: 0.31 ms
+    [mingyuepinyin] 输入串: 12.52 ms, librime 加载: 354.6 ms, 开会话+选方案: 21.69 ms, 逐句解码: 212.35 ms
+    [mingyuepinyin_with_gram] 输入串: 7.14 ms, librime 加载: 310.18 ms, 开会话+选方案: 36.27 ms, 逐句解码: 255.33 ms
+    [rime_frost] 输入串: 7.58 ms, librime 加载: 839.23 ms, 开会话+选方案: 59.99 ms, 逐句解码: 1837.4 ms
+    [rime_frost_with_gram] 输入串: 7.7 ms, librime 加载: 621.21 ms, 开会话+选方案: 63.09 ms, 逐句解码: 1850.94 ms
+    [rime_ice] 输入串: 7.29 ms, librime 加载: 1125.09 ms, 开会话+选方案: 36.55 ms, 逐句解码: 264.53 ms
+    [rime_ice_with_gram] 输入串: 7.86 ms, librime 加载: 1093.77 ms, 开会话+选方案: 33.88 ms, 逐句解码: 313.21 ms
+    [rime_wanxiang_with_gram] 输入串: 7.08 ms, librime 加载: 367.98 ms, 开会话+选方案: 1267.69 ms, 逐句解码: 2203.75 ms
+    [rime_wubi_sentens_wubi86] 输入串: 22.49 ms, librime 加载: 826.93 ms, 开会话+选方案: 380.89 ms, 逐句解码: 333.38 ms
+    [rime_wubi_sentens_wubi86_with_gram] 输入串: 23.02 ms, librime 加载: 829.8 ms, 开会话+选方案: 370.34 ms, 逐句解码: 391.31 ms
+    [wanxiang] 输入串: 7.1 ms, librime 加载: 422.24 ms, 开会话+选方案: 1279.42 ms, 逐句解码: 2222.27 ms
   · prose
-    读取文件: 0.14 ms
+    读取文件: 0.2 ms
     分句: 0.12 ms
-    预过滤: 0.09 ms
-    [mingyuepinyin] 输入串: 3.13 ms, librime 加载: 391.49 ms, 开会话+选方案: 22.47 ms, 逐句解码: 80.95 ms
-    [mingyuepinyin_with_gram] 输入串: 3.13 ms, librime 加载: 351.5 ms, 开会话+选方案: 19.27 ms, 逐句解码: 77.75 ms
-    [rime_frost] 输入串: 2.89 ms, librime 加载: 840.82 ms, 开会话+选方案: 62.71 ms, 逐句解码: 572.13 ms
-    [rime_frost_with_gram] 输入串: 2.52 ms, librime 加载: 640.38 ms, 开会话+选方案: 69.85 ms, 逐句解码: 573.31 ms
-    [rime_ice] 输入串: 3.13 ms, librime 加载: 1104.19 ms, 开会话+选方案: 34.49 ms, 逐句解码: 87.21 ms
-    [rime_ice_with_gram] 输入串: 2.52 ms, librime 加载: 1093.38 ms, 开会话+选方案: 34.28 ms, 逐句解码: 106.59 ms
-    [rime_wanxiang_with_gram] 输入串: 3.86 ms, librime 加载: 386.64 ms, 开会话+选方案: 1320.95 ms, 逐句解码: 643.04 ms
-    [rime_wubi_sentens_wubi86] 输入串: 6.16 ms, librime 加载: 854.12 ms, 开会话+选方案: 433.7 ms, 逐句解码: 132.89 ms
-    [rime_wubi_sentens_wubi86_with_gram] 输入串: 6.27 ms, librime 加载: 828.44 ms, 开会话+选方案: 452.94 ms, 逐句解码: 145.47 ms
-    [wanxiang] 输入串: 2.76 ms, librime 加载: 395.34 ms, 开会话+选方案: 1425.4 ms, 逐句解码: 647.21 ms
+    预过滤: 0.1 ms
+    [mingyuepinyin] 输入串: 5.28 ms, librime 加载: 334.9 ms, 开会话+选方案: 31.93 ms, 逐句解码: 72.32 ms
+    [mingyuepinyin_with_gram] 输入串: 2.5 ms, librime 加载: 344.82 ms, 开会话+选方案: 18.79 ms, 逐句解码: 77.57 ms
+    [rime_frost] 输入串: 2.57 ms, librime 加载: 833.75 ms, 开会话+选方案: 85.36 ms, 逐句解码: 564.99 ms
+    [rime_frost_with_gram] 输入串: 2.52 ms, librime 加载: 596.97 ms, 开会话+选方案: 58.87 ms, 逐句解码: 521.54 ms
+    [rime_ice] 输入串: 2.51 ms, librime 加载: 1062.03 ms, 开会话+选方案: 31.6 ms, 逐句解码: 86.09 ms
+    [rime_ice_with_gram] 输入串: 2.56 ms, librime 加载: 1093.27 ms, 开会话+选方案: 30.24 ms, 逐句解码: 108.91 ms
+    [rime_wanxiang_with_gram] 输入串: 2.48 ms, librime 加载: 362.98 ms, 开会话+选方案: 1261.44 ms, 逐句解码: 639.11 ms
+    [rime_wubi_sentens_wubi86] 输入串: 6.28 ms, librime 加载: 866.74 ms, 开会话+选方案: 374.99 ms, 逐句解码: 127.97 ms
+    [rime_wubi_sentens_wubi86_with_gram] 输入串: 6.29 ms, librime 加载: 839.09 ms, 开会话+选方案: 403.86 ms, 逐句解码: 146.38 ms
+    [wanxiang] 输入串: 2.62 ms, librime 加载: 388.62 ms, 开会话+选方案: 1237.04 ms, 逐句解码: 625.2 ms
   · tech
-    读取文件: 0.13 ms
+    读取文件: 0.12 ms
     分句: 0.11 ms
     预过滤: 0.07 ms
-    [mingyuepinyin] 输入串: 2.17 ms, librime 加载: 362.22 ms, 开会话+选方案: 21.03 ms, 逐句解码: 43.24 ms
-    [mingyuepinyin_with_gram] 输入串: 2.14 ms, librime 加载: 336.36 ms, 开会话+选方案: 25.86 ms, 逐句解码: 64.93 ms
-    [rime_frost] 输入串: 2.31 ms, librime 加载: 803.06 ms, 开会话+选方案: 98.84 ms, 逐句解码: 422.29 ms
-    [rime_frost_with_gram] 输入串: 3.23 ms, librime 加载: 597.5 ms, 开会话+选方案: 66.84 ms, 逐句解码: 424.87 ms
-    [rime_ice] 输入串: 2.47 ms, librime 加载: 1114.34 ms, 开会话+选方案: 34.69 ms, 逐句解码: 69.89 ms
-    [rime_ice_with_gram] 输入串: 2.18 ms, librime 加载: 1084.5 ms, 开会话+选方案: 31.96 ms, 逐句解码: 81.89 ms
-    [rime_wanxiang_with_gram] 输入串: 2.32 ms, librime 加载: 391.47 ms, 开会话+选方案: 1317.16 ms, 逐句解码: 438.34 ms
-    [rime_wubi_sentens_wubi86] 输入串: 5.19 ms, librime 加载: 851.69 ms, 开会话+选方案: 421.71 ms, 逐句解码: 154.58 ms
-    [rime_wubi_sentens_wubi86_with_gram] 输入串: 5.15 ms, librime 加载: 856.5 ms, 开会话+选方案: 396.78 ms, 逐句解码: 131.5 ms
-    [wanxiang] 输入串: 2.19 ms, librime 加载: 414.52 ms, 开会话+选方案: 1337.44 ms, 逐句解码: 427.77 ms
+    [mingyuepinyin] 输入串: 2.29 ms, librime 加载: 318.13 ms, 开会话+选方案: 21.0 ms, 逐句解码: 55.03 ms
+    [mingyuepinyin_with_gram] 输入串: 2.94 ms, librime 加载: 320.55 ms, 开会话+选方案: 15.19 ms, 逐句解码: 63.9 ms
+    [rime_frost] 输入串: 2.3 ms, librime 加载: 752.05 ms, 开会话+选方案: 58.03 ms, 逐句解码: 391.39 ms
+    [rime_frost_with_gram] 输入串: 2.15 ms, librime 加载: 592.32 ms, 开会话+选方案: 71.78 ms, 逐句解码: 399.95 ms
+    [rime_ice] 输入串: 2.36 ms, librime 加载: 1088.26 ms, 开会话+选方案: 29.42 ms, 逐句解码: 67.65 ms
+    [rime_ice_with_gram] 输入串: 2.13 ms, librime 加载: 1083.81 ms, 开会话+选方案: 38.3 ms, 逐句解码: 107.32 ms
+    [rime_wanxiang_with_gram] 输入串: 2.18 ms, librime 加载: 383.19 ms, 开会话+选方案: 1288.61 ms, 逐句解码: 428.25 ms
+    [rime_wubi_sentens_wubi86] 输入串: 5.68 ms, librime 加载: 857.75 ms, 开会话+选方案: 372.02 ms, 逐句解码: 116.21 ms
+    [rime_wubi_sentens_wubi86_with_gram] 输入串: 5.99 ms, librime 加载: 831.76 ms, 开会话+选方案: 392.72 ms, 逐句解码: 141.78 ms
+    [wanxiang] 输入串: 2.16 ms, librime 加载: 367.99 ms, 开会话+选方案: 1301.22 ms, 逐句解码: 391.3 ms
   · test
-    读取文件: 0.14 ms
-    分句: 0.04 ms
+    读取文件: 0.13 ms
+    分句: 0.02 ms
     预过滤: 0.02 ms
-    [mingyuepinyin] 输入串: 0.5 ms, librime 加载: 364.29 ms, 开会话+选方案: 36.32 ms, 逐句解码: 8.4 ms
-    [mingyuepinyin_with_gram] 输入串: 0.43 ms, librime 加载: 353.53 ms, 开会话+选方案: 15.78 ms, 逐句解码: 10.85 ms
-    [rime_frost] 输入串: 0.39 ms, librime 加载: 797.51 ms, 开会话+选方案: 59.62 ms, 逐句解码: 63.75 ms
-    [rime_frost_with_gram] 输入串: 0.46 ms, librime 加载: 587.66 ms, 开会话+选方案: 62.16 ms, 逐句解码: 65.87 ms
-    [rime_ice] 输入串: 0.4 ms, librime 加载: 1091.31 ms, 开会话+选方案: 50.19 ms, 逐句解码: 41.15 ms
-    [rime_ice_with_gram] 输入串: 0.73 ms, librime 加载: 1149.74 ms, 开会话+选方案: 31.01 ms, 逐句解码: 26.43 ms
-    [rime_wanxiang_with_gram] 输入串: 0.7 ms, librime 加载: 375.48 ms, 开会话+选方案: 1288.84 ms, 逐句解码: 70.24 ms
-    [rime_wubi_sentens_wubi86] 输入串: 1.0 ms, librime 加载: 887.95 ms, 开会话+选方案: 417.4 ms, 逐句解码: 29.64 ms
-    [rime_wubi_sentens_wubi86_with_gram] 输入串: 0.97 ms, librime 加载: 834.6 ms, 开会话+选方案: 398.88 ms, 逐句解码: 42.89 ms
-    [wanxiang] 输入串: 0.4 ms, librime 加载: 385.32 ms, 开会话+选方案: 1298.35 ms, 逐句解码: 99.38 ms
+    [mingyuepinyin] 输入串: 0.47 ms, librime 加载: 342.03 ms, 开会话+选方案: 35.38 ms, 逐句解码: 8.26 ms
+    [mingyuepinyin_with_gram] 输入串: 0.41 ms, librime 加载: 336.09 ms, 开会话+选方案: 33.14 ms, 逐句解码: 10.77 ms
+    [rime_frost] 输入串: 0.46 ms, librime 加载: 778.3 ms, 开会话+选方案: 60.64 ms, 逐句解码: 62.96 ms
+    [rime_frost_with_gram] 输入串: 0.4 ms, librime 加载: 617.94 ms, 开会话+选方案: 67.27 ms, 逐句解码: 64.47 ms
+    [rime_ice] 输入串: 0.4 ms, librime 加载: 1087.74 ms, 开会话+选方案: 37.36 ms, 逐句解码: 26.44 ms
+    [rime_ice_with_gram] 输入串: 0.42 ms, librime 加载: 1092.25 ms, 开会话+选方案: 37.89 ms, 逐句解码: 37.16 ms
+    [rime_wanxiang_with_gram] 输入串: 0.51 ms, librime 加载: 390.82 ms, 开会话+选方案: 1281.23 ms, 逐句解码: 71.94 ms
+    [rime_wubi_sentens_wubi86] 输入串: 2.36 ms, librime 加载: 830.35 ms, 开会话+选方案: 411.63 ms, 逐句解码: 31.92 ms
+    [rime_wubi_sentens_wubi86_with_gram] 输入串: 1.32 ms, librime 加载: 822.72 ms, 开会话+选方案: 406.85 ms, 逐句解码: 25.08 ms
+    [wanxiang] 输入串: 0.41 ms, librime 加载: 370.31 ms, 开会话+选方案: 1294.25 ms, 逐句解码: 66.08 ms
 
 ========================================================================
 同义词归一化（句级完全匹配与 CER 计算前）: 其它→其他；他/她/它→他；的/地/得→的
