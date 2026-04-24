@@ -111,7 +111,7 @@ python scripts/benchmark_windows_pinyin.py --ime microsoft_pinyin sogou_pinyin
 | `*_*.csv` | 宽表：每句一行，`gold` 后接各方案各自的 `*_input` / 句子是否判对 / 单句字级准确率 / 预测 / 错误信息 |
 | `*_long.csv` | 窄表：每句 × 每方案一行；含该方案实际输入串 `input`，行序为先方案后句子 |
 | `*_long_by_sentence.csv` | 同上结构；行序为先句子后方案 |
-| `*_scheme_compare.txt` | 各方案**独有判对**及相对其它方案的**多判对**句子列表 |
+| `*_scheme_compare.txt` | 各方案**独有判对**及相对其它方案的**多判对**句子列表，并附对应方案的预测结果对比 |
 | `*_summary.csv` | 按语料 × 方案汇总 |
 | `*_report.txt` | 中文摘要：句子正确率、文字正确率等 |
 | `*.json` | 完整 JSON（含窄表级 `per_sentence`） |

@@ -2,7 +2,7 @@ param(
     [string]$ArtifactsDir = "artifacts",
     [string]$ReportDir = "report",
     [string]$ReportName = "rime-moqi-latest.md",
-    [string]$RimeDllPath = "lib/rime-moqi.dll",
+    [string]$RimeDllPath = "lib/rime copy.dll", 
     [string]$DateFormat = "yyyy-MM-dd",
     [int]$ProgressEvery = 0
 )

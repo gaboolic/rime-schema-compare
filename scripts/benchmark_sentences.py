@@ -352,6 +352,51 @@ def _exact_map_by_sentence(
     return order, by_key
 
 
+def _per_sentence_row_map(
+    per_sentence: List[Dict[str, Any]],
+    vendors: List[VendorConfig],
+) -> Dict[Tuple[Any, ...], Dict[str, Dict[str, Any]]]:
+    want = {v.key for v in vendors}
+    rows_by_sentence: Dict[Tuple[Any, ...], Dict[str, Dict[str, Any]]] = {}
+    for row in per_sentence:
+        k = (row["corpus"], row["index"], row["gold"])
+        vk = row["vendor"]
+        if vk not in want:
+            continue
+        rows_by_sentence.setdefault(k, {})[vk] = row
+    return rows_by_sentence
+
+
+def _prediction_summary(row: Optional[Dict[str, Any]]) -> str:
+    if not row:
+        return "（无结果）"
+    prediction = str(row.get("prediction", "") or "")
+    error = str(row.get("error", "") or "")
+    status = "判对" if row.get("exact") else "判错"
+    details = [status]
+    if error:
+        details.append(f"error={error}")
+    text = prediction if prediction else "（空输出）"
+    return f"{text} ({'; '.join(details)})"
+
+
+def _append_scheme_compare_entry(
+    lines: List[str],
+    key: Tuple[Any, ...],
+    *,
+    rows_by_sentence: Dict[Tuple[Any, ...], Dict[str, Dict[str, Any]]],
+    current_vendor: str,
+    compared_vendors: List[str],
+) -> None:
+    corpus, idx, gold = key
+    vendor_rows = rows_by_sentence.get(key, {})
+    lines.append(f"    [{corpus} #{idx}]")
+    lines.append(f"      gold: {gold}")
+    lines.append(f"      {current_vendor}: {_prediction_summary(vendor_rows.get(current_vendor))}")
+    for other_vendor in compared_vendors:
+        lines.append(f"      {other_vendor}: {_prediction_summary(vendor_rows.get(other_vendor))}")
+
+
 def _write_scheme_compare_txt(
     path: Path,
     *,
@@ -364,6 +409,7 @@ def _write_scheme_compare_txt(
     各方案「比其他方案多正确」的句子：独有判对 + 相对每个对手多判对。
     """
     order, by_key = _exact_map_by_sentence(per_sentence, vendors)
+    rows_by_sentence = _per_sentence_row_map(per_sentence, vendors)
     vkeys = [v.key for v in vendors]
     lines: List[str] = [
         "=" * 72,
@@ -390,8 +436,14 @@ def _write_scheme_compare_txt(
             f"· 仅本方案判对（其余 {len(others)} 个方案均未判对）: {len(exclusive)} 句"
         )
         if exclusive:
-            for corpus, idx, gold in exclusive:
-                lines.append(f"    [{corpus} #{idx}] {gold}")
+            for key in exclusive:
+                _append_scheme_compare_entry(
+                    lines,
+                    key,
+                    rows_by_sentence=rows_by_sentence,
+                    current_vendor=vk,
+                    compared_vendors=others,
+                )
         else:
             lines.append("    （无）")
         lines.append("")
@@ -399,8 +451,14 @@ def _write_scheme_compare_txt(
             wins = [k for k in order if by_key[k].get(vk) and not by_key[k].get(o)]
             lines.append(f"· 相对 [{o}] 多判对（本对、对方错）: {len(wins)} 句")
             if wins:
-                for corpus, idx, gold in wins:
-                    lines.append(f"    [{corpus} #{idx}] {gold}")
+                for key in wins:
+                    _append_scheme_compare_entry(
+                        lines,
+                        key,
+                        rows_by_sentence=rows_by_sentence,
+                        current_vendor=vk,
+                        compared_vendors=[o],
+                    )
             else:
                 lines.append("    （无）")
             lines.append("")
