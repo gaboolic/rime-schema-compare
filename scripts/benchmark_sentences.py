@@ -54,6 +54,7 @@ from rime_schema_compare.text_pipeline import (
     is_pure_hanzi_segment,
     segment_has_ascii_digit_or_letter,
     sentence_to_continuous_pinyin,
+    sentence_to_shape_code_head_input,
     sentence_to_shape_code_prefix_input,
     split_sentences,
 )
@@ -121,6 +122,8 @@ def _vendor_input_label(vendor: VendorConfig) -> str:
         return "拼音全拼"
     if vendor.input_mode == "shape_code_prefix":
         return f"形码前 {vendor.input_code_prefix_len} 码"
+    if vendor.input_mode == "shape_code_head":
+        return "形码分号前编码"
     return vendor.input_mode
 
 
@@ -134,6 +137,13 @@ def _build_vendor_input(vendor: VendorConfig, text: str, root: Path) -> str:
         if not dict_path.is_file():
             raise FileNotFoundError(f"{vendor.key} 形码字典不存在: {dict_path}")
         return sentence_to_shape_code_prefix_input(text, dict_path, vendor.input_code_prefix_len)
+    if vendor.input_mode == "shape_code_head":
+        dict_path = vendor.input_dict_path(root)
+        if dict_path is None:
+            raise FileNotFoundError(f"{vendor.key} 未配置 input_dict_rel_path")
+        if not dict_path.is_file():
+            raise FileNotFoundError(f"{vendor.key} 形码字典不存在: {dict_path}")
+        return sentence_to_shape_code_head_input(text, dict_path)
     raise ValueError(f"Unsupported input_mode for {vendor.key}: {vendor.input_mode}")
 
 

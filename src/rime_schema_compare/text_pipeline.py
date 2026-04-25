@@ -189,6 +189,11 @@ def _pick_shape_code_prefix(code: str, stem: str, prefix_len: int) -> str:
     return ""
 
 
+def _pick_shape_code_head(code: str) -> str:
+    raw = code.split(";", 1)[0] if ";" in code else code
+    return _letters_only(raw)
+
+
 @lru_cache(maxsize=None)
 def load_single_char_shape_code_prefixes(dict_path_str: str, prefix_len: int = 2) -> Dict[str, str]:
     path = Path(dict_path_str)
@@ -216,6 +221,31 @@ def load_single_char_shape_code_prefixes(dict_path_str: str, prefix_len: int = 2
     return mapping
 
 
+@lru_cache(maxsize=None)
+def load_single_char_shape_code_heads(dict_path_str: str) -> Dict[str, str]:
+    path = Path(dict_path_str)
+    mapping: Dict[str, str] = {}
+    in_table = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not in_table:
+            if stripped == "...":
+                in_table = True
+            continue
+        if not stripped or stripped.startswith("#"):
+            continue
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        text = parts[0].strip()
+        if len(text) != 1 or not _HANZI_ONLY_RE.fullmatch(text):
+            continue
+        head = _pick_shape_code_head(parts[1].strip())
+        if head and text not in mapping:
+            mapping[text] = head
+    return mapping
+
+
 def sentence_to_shape_code_prefix_input(s: str, dict_path: Path, prefix_len: int = 2) -> str:
     """Concatenate each Hanzi's shape-code prefix; return empty string if any Hanzi is missing."""
     hz = extract_hanzi(s)
@@ -228,4 +258,19 @@ def sentence_to_shape_code_prefix_input(s: str, dict_path: Path, prefix_len: int
         if not prefix:
             return ""
         parts.append(prefix)
+    return "".join(parts)
+
+
+def sentence_to_shape_code_head_input(s: str, dict_path: Path) -> str:
+    """Concatenate each Hanzi's code before the first semicolon; empty if any Hanzi is missing."""
+    hz = extract_hanzi(s)
+    if not hz:
+        return ""
+    mapping = load_single_char_shape_code_heads(str(dict_path.resolve()))
+    parts: List[str] = []
+    for ch in hz:
+        head = mapping.get(ch, "")
+        if not head:
+            return ""
+        parts.append(head)
     return "".join(parts)
