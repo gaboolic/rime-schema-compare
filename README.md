@@ -207,7 +207,22 @@ patch:
   translator/enable_user_dict: false
 ```
 
-wanxiang的配置里本来就有模型，把模型文件加上就行
+wanxiang的配置里本来就有模型配置，把模型文件加上就行
+
+rime-wubi-sentence_with_gram
+```
+patch:
+  grammar:
+    language: wanxiang-lts-zh-hans
+    collocation_max_length: 5
+    collocation_min_length: 2
+    non_collocation_penalty: -4
+    collocation_penalty: -14
+  translator/contextual_suggestions: true
+  translator/max_homophones: 4
+  translator/max_homographs: 2
+  translator/enable_user_dict: false
+```
 
 ## 仓库布局速查
 
