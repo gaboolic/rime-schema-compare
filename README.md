@@ -10,6 +10,8 @@
 
 最新评测结果表明，[白霜拼音](https://github.com/gaboolic/rime-frost)以及[万象拼音](https://github.com/amzxyz/rime_wanxiang)使用ngrams模型均超越了微软拼音。
 
+[2026.4.25日评测结果](report/2026-04-25.md)，[白霜拼音](https://github.com/gaboolic/rime-frost)在不使用模型时领先其他方案；使用模型时，已超越商业输入法的准确率（[白霜拼音用模型]句子正确率: 71.54% (176/246 句完全匹配)，手心输入法句子正确率: 71.14%  (175/246 句完全匹配)）。
+
 ## 各套方案说明
 
 默认参与对比的方案在 `src/rime_schema_compare/config.py` 的 `DEFAULT_VENDORS` 中定义：每个条目包含 **vendor 键**（命令行与报表列名）、**子目录**、以及 **主 schema_id**（librime 里选用的方案 ID）。
@@ -197,6 +199,8 @@ patch:
     language: wanxiang-lts-zh-hans
     collocation_max_length: 5
     collocation_min_length: 2
+    non_collocation_penalty: -4
+    collocation_penalty: -14
   translator/contextual_suggestions: true
   translator/max_homophones: 4
   translator/max_homographs: 2
