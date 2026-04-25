@@ -173,6 +173,38 @@ Windows 拼音输入法黑盒脚本复用同一套分句、过滤、同义词归
 
 因此评测前会 **修改** 各 `vendor/*` 下的 custom 与用户库文件；若需保留本地状态，请先备份或使用单独工作副本。
 
+### 语言模型配置说明
+几个带_with_gram的方案是在原方案的基础上，改成万象模型
+
+rime_ice_with_gram：
+添加rime_ice.custom.yaml
+```
+patch:
+  grammar:
+    language: wanxiang-lts-zh-hans
+    collocation_max_length: 5
+    collocation_min_length: 2
+  translator/contextual_suggestions: true
+  translator/max_homophones: 4
+  translator/max_homographs: 2
+  translator/enable_user_dict: false
+```
+rime_frost_with_gram：
+添加rime_frost.custom.yaml
+```
+patch:
+  grammar:
+    language: wanxiang-lts-zh-hans
+    collocation_max_length: 5
+    collocation_min_length: 2
+  translator/contextual_suggestions: true
+  translator/max_homophones: 4
+  translator/max_homographs: 2
+  translator/enable_user_dict: false
+```
+
+wanxiang的配置里本来就有模型，把模型文件加上就行
+
 ## 仓库布局速查
 
 | 路径 | 作用 |
