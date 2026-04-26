@@ -93,11 +93,18 @@ IME_PROFILES: Dict[str, ImeProfile] = {
     "microsoft_pinyin": ImeProfile("microsoft_pinyin", "微软拼音", "Microsoft Pinyin"),
     "sogou_pinyin": ImeProfile("sogou_pinyin", "搜狗拼音", "Sogou Pinyin"),
     "shouxin_pinyin": ImeProfile("shouxin_pinyin", "手心输入法", "Shouxin Pinyin"),
+    "wechat_pinyin": ImeProfile("wechat_pinyin", "微信输入法", "WeChat Pinyin"),
 }
 
 IME_HARNESS_DEFAULTS: Dict[str, Dict[str, Any]] = {
     # 手心输入法首次唤起候选窗稍慢，使用更稳定的探针和等待参数。
     "shouxin_pinyin": {
+        "probe_input": "ni",
+        "max_prepare_attempts": 5,
+        "commit_delay_s": 0.30,
+        "settle_timeout_s": 5.0,
+    },
+    "wechat_pinyin": {
         "probe_input": "ni",
         "max_prepare_attempts": 5,
         "commit_delay_s": 0.30,
@@ -858,7 +865,7 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         "--ime",
         nargs="+",
         default=["microsoft_pinyin"],
-        help="Target IME profile(s). Supported: microsoft_pinyin, sogou_pinyin, shouxin_pinyin",
+        help="Target IME profile(s). Supported: microsoft_pinyin, sogou_pinyin, shouxin_pinyin, wechat_pinyin",
     )
     parser.add_argument("--corpus", nargs="*", help="UTF-8 corpus file(s). Default: all data/corpus/*.txt")
     parser.add_argument("--out-dir", default="artifacts", help="Output directory (default: artifacts)")

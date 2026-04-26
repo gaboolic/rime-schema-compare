@@ -214,11 +214,13 @@ class WindowsImeSwitcher:
         "microsoft_pinyin": ("microsoft pinyin", "微软拼音"),
         "sogou_pinyin": ("搜狗拼音", "sogou"),
         "shouxin_pinyin": ("手心输入法", "shouxin"),
+        "wechat_pinyin": ("wetype", "微信输入法", "wechat"),
     }
     _IME_DISPLAY = {
         "microsoft_pinyin": "微软拼音",
         "sogou_pinyin": "搜狗拼音",
         "shouxin_pinyin": "手心输入法",
+        "wechat_pinyin": "微信输入法",
     }
 
     def __init__(self) -> None:
@@ -239,7 +241,10 @@ class WindowsImeSwitcher:
         raise RuntimeError(f"ime_profile_not_found:{ime_key}")
 
     def get_default_input_tip(self) -> str:
-        payload = _run_powershell_json("Get-WinDefaultInputMethodOverride | ConvertTo-Json -Depth 3")
+        try:
+            payload = _run_powershell_json("Get-WinDefaultInputMethodOverride | ConvertTo-Json -Depth 3")
+        except RuntimeError:
+            return ""
         if isinstance(payload, dict):
             return str(payload.get("InputMethodTip") or payload.get("InputTip") or "").strip()
         if isinstance(payload, str):
@@ -438,6 +443,7 @@ class WindowsPinyinImeHarness:
         self._edit_hwnd: Optional[int] = None
         self._window_pid: Optional[int] = None
         self._layout_hkl: Optional[int] = None
+        self._chinese_mode_ready = False
 
     @property
     def process_pid(self) -> Optional[int]:
@@ -476,6 +482,7 @@ class WindowsPinyinImeHarness:
         self._window_hwnd = None
         self._edit_hwnd = None
         self._window_pid = None
+        self._chinese_mode_ready = False
 
     def reset_host(self) -> None:
         if not self._refresh_window_handles():
@@ -510,10 +517,11 @@ class WindowsPinyinImeHarness:
             self.reset_host()
         except Exception as exc:
             return BlackboxDecodeResult("", False, f"reset_failed:{exc}")
-        if not self._ensure_chinese_mode():
+        if not self._chinese_mode_ready and not self._ensure_chinese_mode():
             return BlackboxDecodeResult("", False, "ime_not_ready")
         self.reset_host()
         self._focus_host()
+        self._open_ime()
         try:
             self._send_ascii_keys(raw_input)
             time.sleep(self.commit_delay_s)
@@ -638,6 +646,7 @@ class WindowsPinyinImeHarness:
                 self._open_ime()
                 time.sleep(0.08)
                 if self._probe_hanzi_commit():
+                    self._chinese_mode_ready = True
                     return True
             finally:
                 try:
