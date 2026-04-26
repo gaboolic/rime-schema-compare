@@ -12,6 +12,9 @@
 
 [2026.4.25日评测结果](report/2026-04-25.md)，[白霜拼音](https://github.com/gaboolic/rime-frost)在不使用模型时领先其他方案；使用模型时，已超越商业输入法的准确率（[白霜拼音用模型]句子正确率: 71.54% (176/246 句完全匹配)，手心输入法句子正确率: 71.14%  (175/246 句完全匹配)）。
 
+
+[查看rime多方案top3正确率最新评测结果（调用我修改的librime）](report/top3_latest.md) 我修改的librime：https://github.com/gaboolic/librime 修改了组句算法，支持输出多个整句候选
+
 ## 各套方案说明
 
 默认参与对比的方案在 `src/rime_schema_compare/config.py` 的 `DEFAULT_VENDORS` 中定义：每个条目包含 **vendor 键**（命令行与报表列名）、**子目录**、以及 **主 schema_id**（librime 里选用的方案 ID）。

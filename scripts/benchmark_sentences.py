@@ -147,6 +147,17 @@ def _build_vendor_input(vendor: VendorConfig, text: str, root: Path) -> str:
     raise ValueError(f"Unsupported input_mode for {vendor.key}: {vendor.input_mode}")
 
 
+def _candidate_exact_match(
+    candidate_texts: List[str],
+    gold: str,
+    top_n: int,
+    normalize,
+) -> bool:
+    """Return true when gold matches any candidate in the first ``top_n`` entries."""
+    limit = max(1, top_n)
+    return any(sentence_exact_match(normalize(candidate), normalize(gold)) for candidate in candidate_texts[:limit])
+
+
 def default_corpus_files(root: Path) -> List[Tuple[Path, str]]:
     """All ``*.txt`` under ``data/corpus/``, sorted by path."""
     d = root / "data" / "corpus"
@@ -575,6 +586,7 @@ def _write_report_txt(
     timings_by_corpus: Optional[Dict[str, Dict[str, Any]]] = None,
     timings_wall_total_ms: Optional[float] = None,
     eval_synonyms_summary: Optional[str] = None,
+    exact_match_top_n: int = 1,
 ) -> None:
     lines: List[str] = [
         "=" * 72,
@@ -622,6 +634,8 @@ def _write_report_txt(
             lines.extend(_format_timings_lines(timings_by_corpus[stem], indent="    "))
         lines.append("")
     lines.append("=" * 72)
+    lines.append(f"句子正确判定: Top {exact_match_top_n} 候选中任一项与 gold 完全一致即判对。")
+    lines.append("")
     if eval_synonyms_summary:
         lines.append(f"同义词归一化（句级完全匹配与 CER 计算前）: {eval_synonyms_summary}")
         lines.append("")
@@ -684,11 +698,14 @@ def run_benchmark(
     write_artifacts: bool = True,
     stamp: Optional[str] = None,
     artifact_base: Optional[str] = None,
+    exact_match_top_n: int = 1,
 ) -> Dict[str, Any]:
     timings: Dict[str, Any] = {"vendors": {}}
     norm = eval_synonyms.normalize
 
     logger.info("[语料:%s] 读取 UTF-8: %s", corpus_label, corpus_path)
+    if exact_match_top_n > 1:
+        logger.info("[评测] 句子正确判定: 前 %d 个候选任一匹配 gold 即判对", exact_match_top_n)
     t0 = time.perf_counter()
     text = corpus_path.read_text(encoding="utf-8")
     timings["read_text_ms"] = round((time.perf_counter() - t0) * 1000, 2)
@@ -925,7 +942,8 @@ def run_benchmark(
                         gold = slot["gold"]
                         if not res.ok:
                             st["decode_failed"] += 1
-                        exact = res.ok and sentence_exact_match(norm(pred), norm(gold))
+                        exact_candidates = res.candidate_texts or ([pred] if pred else [])
+                        exact = res.ok and _candidate_exact_match(exact_candidates, gold, exact_match_top_n, norm)
                         if exact:
                             st["exact_matches"] += 1
                         _, cer = _accumulate_char_metrics(st, gold, pred, res.ok, norm)
@@ -988,6 +1006,7 @@ def run_benchmark(
             else None,
             "rules_summary": eval_synonyms.summary_line(),
         },
+        "exact_match_top_n": exact_match_top_n,
     }
 
     if write_artifacts:
@@ -1029,6 +1048,7 @@ def run_benchmark(
             mode=f"单语料 ({corpus_label})",
             timings_one_corpus=timings,
             eval_synonyms_summary=eval_synonyms.summary_line(),
+            exact_match_top_n=exact_match_top_n,
         )
         logger.info(
             "[写出结果] 完成: 耗时 %.2f ms | %s | %s | %s | %s | %s | %s_report.txt",
@@ -1110,6 +1130,7 @@ def _write_combined_artifacts(
         timings_by_corpus=payload.get("timings_by_corpus"),
         timings_wall_total_ms=None,
         eval_synonyms_summary=_es.get("rules_summary"),
+        exact_match_top_n=int(payload.get("exact_match_top_n", 1) or 1),
     )
     t_r1 = time.perf_counter()
     payload["timings_report_write_ms"] = round((t_r1 - t_r0) * 1000, 2)
@@ -1141,6 +1162,7 @@ def _write_combined_artifacts(
         timings_by_corpus=payload.get("timings_by_corpus"),
         timings_wall_total_ms=payload.get("timings_wall_total_ms"),
         eval_synonyms_summary=_es.get("rules_summary"),
+        exact_match_top_n=int(payload.get("exact_match_top_n", 1) or 1),
     )
     if wall_clock_start is not None:
         payload["timings_wall_total_ms"] = round(
@@ -1204,6 +1226,12 @@ def main() -> None:
         default=None,
         help="同义词评测 JSON（默认 data/eval_synonyms.json；文件不存在则用内置规则）",
     )
+    p.add_argument(
+        "--exact-match-top-n",
+        type=int,
+        default=1,
+        help="句子正确判定使用前 N 个候选；默认 1 表示只看首选",
+    )
     args = p.parse_args()
 
     root = repo_root()
@@ -1225,6 +1253,9 @@ def main() -> None:
         "[评测] 同义词配置: %s",
         syn_path if syn_path.is_file() else f"{syn_path}（不存在，使用内置）",
     )
+    if args.exact_match_top_n < 1:
+        raise SystemExit("--exact-match-top-n must be >= 1")
+    logger.info("[评测] 句子正确判定候选范围: Top %d", args.exact_match_top_n)
 
     corpora: List[Tuple[Path, str]]
     if args.corpus is None or len(args.corpus) == 0:
@@ -1262,6 +1293,7 @@ def main() -> None:
             write_artifacts=True,
             stamp=stamp,
             artifact_base=f"benchmark_{label}_{stamp}",
+            exact_match_top_n=args.exact_match_top_n,
         )
         print(json.dumps(payload["summary"], ensure_ascii=False, indent=2))
         art = f"benchmark_{label}_{stamp}"
@@ -1307,6 +1339,7 @@ def main() -> None:
             eval_synonyms_path=syn_path,
             write_artifacts=False,
             stamp=stamp,
+            exact_match_top_n=args.exact_match_top_n,
         )
         all_rows.extend(part["per_sentence"])
         summary_by_corpus[stem] = part["summary"]
@@ -1334,6 +1367,7 @@ def main() -> None:
             "config_path": str(syn_path.resolve()) if syn_path.is_file() else None,
             "rules_summary": syn_cfg.summary_line(),
         },
+        "exact_match_top_n": args.exact_match_top_n,
     }
     _write_combined_artifacts(out_dir, stamp, base, payload, vendors, wall_clock_start=t_wall)
 

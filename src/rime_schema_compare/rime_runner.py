@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
 
@@ -15,6 +15,7 @@ class DecodeResult:
     prediction: str
     ok: bool
     reason: str
+    candidate_texts: List[str] = field(default_factory=list)
 
 
 class RimeDistroRunner:
@@ -113,10 +114,12 @@ class RimeDistroRunner:
         if not ctx:
             return DecodeResult("", False, "no_context")
         cands: List[dict] = ctx.get("candidates") or []
-        top = (cands[0].get("text") or "").strip() if cands else ""
+        candidate_texts = [(cand.get("text") or "").strip() for cand in cands]
+        candidate_texts = [text for text in candidate_texts if text]
+        top = candidate_texts[0] if candidate_texts else ""
         if not top:
             return DecodeResult("", False, "empty_top_candidate")
-        return DecodeResult(top, True, "ok")
+        return DecodeResult(top, True, "ok", candidate_texts)
 
     def decode_input_in_batch(self, raw_input: str) -> DecodeResult:
         """Decode one sentence using the session from :meth:`begin_decode_batch`."""
