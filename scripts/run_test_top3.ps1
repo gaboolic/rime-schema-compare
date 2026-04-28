@@ -1,7 +1,7 @@
 param(
     [string]$ArtifactsDir = "artifacts",
     [string]$ReportDir = "report",
-    [string]$RimeDllPath = "lib/rime222.dll",
+    [string]$RimeDllPath = "lib/rime-24986039806.dll",
     [string]$DateFormat = "yyyy-MM-dd",
     [int]$ProgressEvery = 0,
     [int]$ExactMatchTopN = 3

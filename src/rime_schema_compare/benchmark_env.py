@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 from pathlib import Path
 from typing import Any, Dict, List
@@ -11,8 +12,24 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-PATCH_TRANSLATOR_DISABLE_USER_DICT = "translator/enable_user_dict"
-PATCH_BODY: Dict[str, Any] = {"patch": {PATCH_TRANSLATOR_DISABLE_USER_DICT: False}}
+
+def _translator_setting_int(name: str, default: int) -> int:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        return default
+    try:
+        return int(value)
+    except ValueError:
+        logger.warning("[评测环境] 忽略无效的 %s=%r，使用默认值 %s", name, value, default)
+        return default
+
+
+PATCH_TRANSLATOR_SETTINGS: Dict[str, Any] = {
+    "translator/enable_user_dict": False,
+    "translator/max_sentences": _translator_setting_int("RIME_BENCH_MAX_SENTENCES", 3),
+    "translator/max_homophones": _translator_setting_int("RIME_BENCH_MAX_HOMOPHONES", 8),
+}
+PATCH_BODY: Dict[str, Any] = {"patch": PATCH_TRANSLATOR_SETTINGS}
 
 
 def remove_all_userdbs(user_dir: Path) -> List[Path]:
@@ -43,7 +60,7 @@ def remove_all_userdbs(user_dir: Path) -> List[Path]:
 
 
 def merge_disable_user_dict_patch(custom_yaml: Path) -> None:
-    """Create or update {schema_id}.custom.yaml so translator user dict is off."""
+    """Create or update {schema_id}.custom.yaml with benchmark translator settings."""
     custom_yaml.parent.mkdir(parents=True, exist_ok=True)
     data: Dict[str, Any] = {}
     if custom_yaml.is_file():
@@ -60,7 +77,7 @@ def merge_disable_user_dict_patch(custom_yaml: Path) -> None:
     patch = data.get("patch")
     if not isinstance(patch, dict):
         patch = {}
-    patch[PATCH_TRANSLATOR_DISABLE_USER_DICT] = False
+    patch.update(PATCH_TRANSLATOR_SETTINGS)
     data["patch"] = patch
     custom_yaml.write_text(
         yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False),
@@ -71,7 +88,7 @@ def merge_disable_user_dict_patch(custom_yaml: Path) -> None:
 def prepare_vendor_for_benchmark(user_dir: Path, schema_id: str) -> Dict[str, Any]:
     """
     Delete *.userdb under user_dir; ensure ``{schema_id}.custom.yaml`` sets
-    ``translator/enable_user_dict: false``.
+    benchmark translator patch values.
     """
     removed = remove_all_userdbs(user_dir)
     custom_path = user_dir / f"{schema_id}.custom.yaml"

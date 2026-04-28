@@ -1,2 +1,4 @@
 patch:
   translator/enable_user_dict: false
+  translator/max_sentences: 3
+  translator/max_homophones: 8

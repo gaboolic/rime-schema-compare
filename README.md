@@ -4,6 +4,9 @@
 当前 `librime` 进程内评测支持 **Windows / macOS / Linux**，会按平台自动查找动态库：Windows 使用 `rime.dll`，macOS 使用 `librime*.dylib`，Linux 使用 `librime.so*`。
 
 ## 最新评测结果 
+
+会定期替换语料来测试。语料分几种，1当天随便找的新闻/当天的知乎热榜 2随便找的小说网站点开排行榜找一个 3随便搜一个文艺一点的散文 4侧重新科技的文章
+
 [查看rime多方案最新评测结果（调用librime）](report/latest.md)
 
 [查看其他windows输入法最新评测结果（黑盒模拟按键的方式测试）](report/other_latest.md)

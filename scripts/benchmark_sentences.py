@@ -1019,7 +1019,7 @@ def run_benchmark(
         _write_sentence_grouped_csv(csv_grouped, rows, vendors)
         fn = list(_LONG_CSV_FIELDS)
         with csv_long.open("w", encoding="utf-8", newline="") as f:
-            w = csv.DictWriter(f, fieldnames=fn)
+            w = csv.DictWriter(f, fieldnames=fn, extrasaction="ignore")
             w.writeheader()
             for row in rows:
                 w.writerow(row)
@@ -1083,7 +1083,7 @@ def _write_combined_artifacts(
     _write_sentence_grouped_csv(csv_grouped, payload["per_sentence"], vendors)
     fn = list(_LONG_CSV_FIELDS)
     with csv_long.open("w", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fn)
+        w = csv.DictWriter(f, fieldnames=fn, extrasaction="ignore")
         w.writeheader()
         for row in payload["per_sentence"]:
             w.writerow(row)
@@ -1276,7 +1276,7 @@ def main() -> None:
         for p, stem in corpora:
             logger.info("[语料列表]   - %s → %s", stem, p)
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
 
     if len(corpora) == 1:
         corpus_path, stem = corpora[0]
