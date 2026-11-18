@@ -1,0 +1,22 @@
+[
+  {
+    "repository": "rime/rime-luna-pinyin",
+    "branch": "master",
+    "commit": "56b934b099dfbeab842320f13aa8b461a6ab3e42"
+  },
+  {
+    "repository": "rime/rime-prelude",
+    "branch": "master",
+    "commit": "082425ea0684bca36474415d4a0e8db9b016487e"
+  },
+  {
+    "repository": "rime/rime-essay",
+    "branch": "master",
+    "commit": "d95eeae056df429ecf993038c325a216f0b28c5b"
+  },
+  {
+    "repository": "rime/rime-stroke",
+    "branch": "master",
+    "commit": "1e8fff9b9494ddec23b0cbc526bcfd8171a6fd48"
+  }
+]

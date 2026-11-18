@@ -11,3 +11,10 @@
 [submodule "vendor/rime-wubi-sentence"]
 	path = vendor/rime-wubi-sentence
 	url = https://github.com/gaboolic/rime-wubi-sentence
+[submodule "vendor/rime-frost_with_gram"]
+	path = vendor/rime-frost_with_gram
+	url = https://github.com/gaboolic/rime-frost
+[submodule "vendor/rime_wanxiang_with_gram"]
+	path = vendor/rime_wanxiang_with_gram
+	url = https://github.com/amzxyz/rime_wanxiang
+	branch = wanxiang

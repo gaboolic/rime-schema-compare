@@ -3,7 +3,8 @@ param(
     [string]$ReportDir = "report",
     [string]$RimeDllPath = "lib/rime.dll",
     [string]$DateFormat = "yyyy-MM-dd",
-    [int]$ProgressEvery = 0
+    [int]$ProgressEvery = 0,
+    [string[]]$Corpus = @()
 )
 
 $ErrorActionPreference = "Stop"
@@ -85,7 +86,13 @@ $env:RIME_DLL = $resolvedRimeDllPath
 
 Push-Location $repoRoot
 try {
-    & python "scripts/benchmark_sentences.py" --progress-every $ProgressEvery --out-dir $artifactsPath --rime-dll $resolvedRimeDllPath
+    $benchmarkArgs = @("scripts/benchmark_sentences.py", "--progress-every", $ProgressEvery,
+        "--out-dir", $artifactsPath, "--rime-dll", $resolvedRimeDllPath)
+    if ($Corpus.Count -gt 0) {
+        $benchmarkArgs += "--corpus"
+        $benchmarkArgs += $Corpus
+    }
+    & python @benchmarkArgs
     if ($LASTEXITCODE -ne 0) {
         throw "benchmark_sentences.py exited with code $LASTEXITCODE"
     }

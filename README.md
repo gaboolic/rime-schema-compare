@@ -98,7 +98,22 @@ Windows 下也可以继续使用 PowerShell 入口：
 
 ```
 ./scripts/run_test.ps1
+# 指定本次语料，避免与 data/corpus 中的历史语料混跑：
+./scripts/run_test.ps1 -Corpus data/corpus/zhihu_hotlist_2026-11-18.txt
 ```
+
+### 获取知乎热榜回答正文
+
+安装 Playwright 后，可使用本机 Chrome 和独立持久化会话抓取公开回答：
+
+```bash
+pip install playwright
+python scripts/download_zhihu_hotlist.py --headed --browser-channel chrome --profile-dir .cache/zhihu-browser --require-bodies --answers 3
+```
+
+需要本机已安装 Chrome；也支持 `--browser-channel msedge`，默认 `chromium` 则需先执行 `playwright install chromium`。浏览器使用原生 UA 和 client hints，不再固定冒充 Chrome 126；先访问首页建立正常会话，再等待回答 DOM。初始 HTTP 403 可能只是 JS challenge，不能仅凭状态码判断最终失败；若仍出现登录或验证要求，需要人工处理，不会绕过。
+
+输出语料旁会生成 `.meta.json`，记录实际回答数、来源链接和语料哈希。`--require-bodies` 在一条回答也未取得时会报错并保留原语料，避免把摘要测试误当正文测试。部分问题失败时仍可能回退到摘要，须检查元数据的 `fallback_questions`。持久化目录可能包含会话 Cookie，不要提交或分享，也不要指定日常 Chrome 用户目录。
 
 ### 运行 Windows 拼音输入法黑盒评测
 

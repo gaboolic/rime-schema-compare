@@ -8,3 +8,8 @@ distributing.
 
 Vendor Rime configurations are Git submodules under `vendor/` and are licensed
 under their respective repositories (rime-frost, rime-ice, rime_wanxiang).
+
+The upstream Luna Pinyin snapshot under `vendor/mingyuepinyin/` includes
+rime/rime-luna-pinyin, rime/rime-prelude, rime/rime-essay and rime/rime-stroke.
+Source revisions are recorded in `upstream_versions.json`; original licenses
+and available author lists are preserved under its `licenses/` directory.
