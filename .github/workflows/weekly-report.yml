@@ -40,6 +40,9 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Install original Luna Pinyin and Octagram hant model
+        run: python scripts/setup_luna_octagram.py --update
+
       - name: Run benchmark and refresh reports
         env:
           RIME_DLL: ${{ github.workspace }}\lib\rime.dll

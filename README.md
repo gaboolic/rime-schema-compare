@@ -5,6 +5,8 @@
 
 ## 最新评测结果 
 
+[2026-11-18：原版朙月拼音 + 原版八股文专项测试](report/2026-11-18-luna-octagram.md)（Issue #1，3466 句，整句正确率 52.31%，文字正确率 89.46%）。
+
 会定期替换语料来测试。语料分几种，1当天随便找的新闻/当天的知乎热榜 2随便找的小说网站点开排行榜找一个 3随便搜一个文艺一点的散文 4侧重新科技的文章
 
 [查看rime多方案最新评测结果（调用librime）](report/latest.md)
@@ -22,12 +24,13 @@
 
 默认参与对比的方案在 `src/rime_schema_compare/config.py` 的 `DEFAULT_VENDORS` 中定义：每个条目包含 **vendor 键**（命令行与报表列名）、**子目录**、以及 **主 schema_id**（librime 里选用的方案 ID）。
 
-默认对比的基础方案均按“**无语言模型、无用户词库**”口径评测：不额外挂载 `.gram` 模型文件，且评测前会清理 `userdb` 并通过 `custom.yaml` 禁用 `translator/enable_user_dict`。所有 `*_with_gram` 变体也统一复用同一个 [`wanxiang-lts-zh-hans.gram`](https://github.com/amzxyz/RIME-LMDG/releases)，仅在各自方案目录下额外挂载该语言模型，其余仍保持禁用用户词库。
+默认对比的基础方案均按“**无语言模型、无用户词库**”口径评测：不额外挂载 `.gram` 模型文件，且评测前会清理 `userdb` 并通过 `custom.yaml` 禁用 `translator/enable_user_dict`。现有 `*_with_gram` 变体统一复用同一个 [`wanxiang-lts-zh-hans.gram`](https://github.com/amzxyz/RIME-LMDG/releases)，仅在各自方案目录下额外挂载该语言模型，其余仍保持禁用用户词库。
 
 | Vendor 键 | 目录 | 主 schema | 说明 |
 |-----------|------|-----------|------|
 | `mingyuepinyin` | `vendor/mingyuepinyin` | `luna_pinyin_simp` | 明月拼音（简体全拼），与 Rime 自带 Luna 系方案同源的一类发行 |
 | `mingyuepinyin_with_gram` | `vendor/mingyuepinyin_with_gram` | `luna_pinyin_simp` | 带 `wanxiang-lts-zh-hans` ngram 模型的明月拼音；其余配置与 `vendor/mingyuepinyin` 保持一致 |
+| `luna_pinyin_with_octagram` | `vendor/luna_pinyin_with_octagram` | `luna_pinyin_simp` | 原版 `rime/rime-luna-pinyin` + 原版八股文 `zh-hant-t-essay-bgw`，简体输出，保留上游模型参数 |
 | `rime_ice` | `vendor/rime-ice` | `rime_ice` | 雾凇拼音 |
 | `rime_ice_with_gram` | `vendor/rime-ice_with_gram` | `rime_ice` | 带 `wanxiang-lts-zh-hans` ngram 模型的雾凇拼音；其余配置与 `vendor/rime-ice` 保持一致 |
 | `rime_frost` | `vendor/rime-frost` | `rime_frost` | 白霜拼音（rime-frost） |
@@ -53,6 +56,26 @@
 ```bash
 git submodule update --init --recursive --depth 1
 ```
+
+### 原版朙月拼音 + 原版八股文（Issue #1）
+
+首次运行默认评测前，安装这一独立测试项：
+
+```bash
+python scripts/setup_luna_octagram.py
+```
+
+脚本从官方 `rime/rime-luna-pinyin` 及其 `prelude`、`essay`、`stroke` 依赖取得原版资源，从 `lotem/rime-octagram-data` 的主分支取得 `grammar.yaml`，从 `hant` 分支取得 `zh-hant-t-essay-bgw.gram`。资源安装到独立目录，不改写现有明月拼音或万象模型测试项。需要 Git 和网络；重复执行复用缓存，更新上游用 `--update`。
+
+测试采用 `luna_pinyin_simp`：只将输出转换为简体，底层仍是原版繁体词典，因此使用 `grammar:/hant`，不是 `hans` 模型。保留上游的 contextual suggestions、max_homophones=7、max_homographs=7 等参数，不注入其他方案的候选参数；仅按评测口径禁用用户词库。需要 librime 支持 `librime-octagram`，并提供 OpenCC 的 `t2s.json` 等数据（本仓库放在 `vendor/data/opencc`）。
+
+单独测试：
+
+```bash
+python scripts/benchmark_sentences.py --vendors luna_pinyin_with_octagram
+```
+
+安装后默认全方案评测也会包含该项；缺少资源时会明确报错，避免悄悄跑成无模型结果。上游提交记录保存在该测试目录的 `upstream_versions.json`，并写入摘要报告。现有每周评测流程会在评测前安装/更新此项，无需另外创建定时任务。
 
 ### 安装依赖
 

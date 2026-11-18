@@ -95,6 +95,13 @@ def _filter_unavailable_vendors(root: Path, vendors: List[VendorConfig]) -> List
             missing_reason = f"目录不存在: {vendor_dir}"
         elif input_dict is not None and not input_dict.is_file():
             missing_reason = f"输入码表不存在: {input_dict}"
+        else:
+            missing_files = [name for name in vendor.required_files if not (vendor_dir / name).is_file()]
+            if missing_files:
+                missing_reason = f"缺少方案文件: {', '.join(missing_files)}"
+
+        if missing_reason and vendor.key == "luna_pinyin_with_octagram":
+            missing_reason += "；请先运行 python scripts/setup_luna_octagram.py"
 
         if not missing_reason:
             out.append(vendor)
@@ -616,6 +623,14 @@ def _write_report_txt(
             lines.append(f"  - {stem}: {fp}")
         lines.append("")
 
+    for vendor in vendors:
+        manifest = vendor.data_dir() / "upstream_versions.json"
+        if manifest.is_file():
+            lines.append(f"【上游版本: {vendor.key}】")
+            for source in json.loads(manifest.read_text(encoding="utf-8")):
+                lines.append(f"  {source['repository']}@{source['branch']}: {source['commit']}")
+            lines.append("")
+
     lines.append("【总体】")
     for v in vendors:
         s = summary_overall.get(v.key) or {}
@@ -813,7 +828,10 @@ def run_benchmark(
         for v in vendors:
             ud_prep = v.data_dir(root)
             if ud_prep.is_dir():
-                info = prepare_vendor_for_benchmark(ud_prep, v.schema_id)
+                info = prepare_vendor_for_benchmark(
+                    ud_prep, v.schema_id,
+                    preserve_translator_defaults=v.preserve_translator_defaults,
+                )
                 logger.info(
                     "[评测环境] %s 已移除 userdb %d 处；已合并 patch（禁用用户词库）→ %s",
                     v.key,
@@ -1233,7 +1251,7 @@ def main() -> None:
         "--vendors",
         nargs="*",
         default=None,
-        help="Subset of vendor keys: mingyuepinyin mingyuepinyin_with_gram rime_ice rime_ice_with_gram rime_frost rime_frost_with_gram wanxiang rime_wanxiang_with_gram rime_wubi_sentens_wubi86 rime_wubi_sentens_wubi86_with_gram rime_wubi_sentens_tiger rime_wubi_sentens_ziyuan",
+        help="Subset of vendor keys: " + " ".join(v.key for v in DEFAULT_VENDORS),
     )
     p.add_argument("--progress-every", type=int, default=50, help="Print progress every N raw segments (0=off)")
     p.add_argument(

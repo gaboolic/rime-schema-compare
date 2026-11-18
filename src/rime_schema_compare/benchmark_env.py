@@ -59,7 +59,9 @@ def remove_all_userdbs(user_dir: Path) -> List[Path]:
     return removed
 
 
-def merge_disable_user_dict_patch(custom_yaml: Path) -> None:
+def merge_disable_user_dict_patch(
+    custom_yaml: Path, *, preserve_translator_defaults: bool = False
+) -> None:
     """Create or update {schema_id}.custom.yaml with benchmark translator settings."""
     custom_yaml.parent.mkdir(parents=True, exist_ok=True)
     data: Dict[str, Any] = {}
@@ -77,7 +79,14 @@ def merge_disable_user_dict_patch(custom_yaml: Path) -> None:
     patch = data.get("patch")
     if not isinstance(patch, dict):
         patch = {}
-    patch.update(PATCH_TRANSLATOR_SETTINGS)
+    if preserve_translator_defaults:
+        # Remove only overrides previously injected by the benchmark. The grammar
+        # include (e.g. upstream hant's max_homophones=7) remains authoritative.
+        for key in PATCH_TRANSLATOR_SETTINGS:
+            patch.pop(key, None)
+        patch["translator/enable_user_dict"] = False
+    else:
+        patch.update(PATCH_TRANSLATOR_SETTINGS)
     data["patch"] = patch
     custom_yaml.write_text(
         yaml.dump(data, allow_unicode=True, default_flow_style=False, sort_keys=False),
@@ -85,14 +94,18 @@ def merge_disable_user_dict_patch(custom_yaml: Path) -> None:
     )
 
 
-def prepare_vendor_for_benchmark(user_dir: Path, schema_id: str) -> Dict[str, Any]:
+def prepare_vendor_for_benchmark(
+    user_dir: Path, schema_id: str, *, preserve_translator_defaults: bool = False
+) -> Dict[str, Any]:
     """
     Delete *.userdb under user_dir; ensure ``{schema_id}.custom.yaml`` sets
     benchmark translator patch values.
     """
     removed = remove_all_userdbs(user_dir)
     custom_path = user_dir / f"{schema_id}.custom.yaml"
-    merge_disable_user_dict_patch(custom_path)
+    merge_disable_user_dict_patch(
+        custom_path, preserve_translator_defaults=preserve_translator_defaults
+    )
     return {
         "userdb_paths_removed": [str(p) for p in removed],
         "custom_yaml": str(custom_path.resolve()),

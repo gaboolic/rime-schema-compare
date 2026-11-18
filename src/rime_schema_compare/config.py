@@ -32,6 +32,9 @@ class VendorConfig:
     input_mode: str = "pinyin"
     input_dict_rel_path: Optional[str] = None
     input_code_prefix_len: int = 2
+    preserve_translator_defaults: bool = False
+    required_files: tuple[str, ...] = ()
+    required_rime_modules: tuple[str, ...] = ()
 
     def data_dir(self, root: Optional[Path] = None) -> Path:
         base = root or repo_root()
@@ -48,6 +51,21 @@ class VendorConfig:
 DEFAULT_VENDORS: List[VendorConfig] = [
     VendorConfig("mingyuepinyin", "vendor/mingyuepinyin", "luna_pinyin_simp"),
     VendorConfig("mingyuepinyin_with_gram", "vendor/mingyuepinyin_with_gram", "luna_pinyin_simp"),
+    VendorConfig(
+        "luna_pinyin_with_octagram",
+        "vendor/luna_pinyin_with_octagram",
+        "luna_pinyin_simp",
+        preserve_translator_defaults=True,
+        required_rime_modules=("octagram",),
+        required_files=(
+            "luna_pinyin.schema.yaml",
+            "luna_pinyin_simp.schema.yaml",
+            "luna_pinyin.dict.yaml",
+            "grammar.yaml",
+            "zh-hant-t-essay-bgw.gram",
+            "upstream_versions.json",
+        ),
+    ),
     VendorConfig("rime_ice", "vendor/rime-ice", "rime_ice"),
     VendorConfig("rime_ice_with_gram", "vendor/rime-ice_with_gram", "rime_ice"),
     VendorConfig("rime_frost", "vendor/rime-frost", "rime_frost"),

@@ -217,6 +217,7 @@ vendor/*/user.yaml/
 vendor/mingyuepinyin/installation.yaml
 vendor/mingyuepinyin/user.yaml
 vendor/mingyuepinyin_with_gram/
+vendor/luna_pinyin_with_octagram/
 vendor/mingyuepinyin_with_gram/installation.yaml
 vendor/mingyuepinyin_with_gram/user.yaml
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ctypes
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
@@ -71,6 +72,18 @@ class RimeDistroRunner:
             return
         self.close()
         rime = RimeDllWrapper(dll_path=str(self._dll_path))
+        if vendor.required_rime_modules:
+            find_module = getattr(rime.dll, "RimeFindModule", None)
+            if find_module is None:
+                raise RuntimeError("Cannot verify required Rime modules: RimeFindModule is unavailable")
+            find_module.argtypes = [ctypes.c_char_p]
+            find_module.restype = ctypes.c_void_p
+            for module in vendor.required_rime_modules:
+                if not find_module(module.encode("utf-8")):
+                    raise RuntimeError(
+                        f"Vendor {vendor.key} requires librime-{module}; "
+                        "use a librime build with this plugin linked/registered."
+                    )
         rime.initialize(
             app_name="rime.schema.compare",
             shared_data_dir=str(shared),
