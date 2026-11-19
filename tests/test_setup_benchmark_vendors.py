@@ -40,7 +40,9 @@ class TemporaryRoot(unittest.TestCase):
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
-        self.root = Path(temp.name)
+        # Windows runners may expose TEMP via RUNNER~1 while install() resolves
+        # it to runneradmin. Compare canonical paths, not their spellings.
+        self.root = Path(temp.name).resolve()
 
     def write(self, relative, content="fixture"):
         path = self.root / relative
@@ -57,6 +59,25 @@ class TemporaryRoot(unittest.TestCase):
             for name, content in entries.items():
                 bundle.writestr(name, content)
         return path
+
+
+class CanonicalFixtureTests(unittest.TestCase):
+    def test_temporary_fixture_resolves_alternate_path_spellings(self):
+        # Simulate a non-canonical temp path without requiring Windows 8.3
+        # names on the test host. RUNNER~1 vs runneradmin has the same issue.
+        with tempfile.TemporaryDirectory() as actual:
+            root = Path(actual)
+            (root / 'alias').mkdir()
+            temporary = mock.Mock()
+            temporary.name = str(root / 'alias' / '..')
+            fixture = TemporaryRoot()
+            with mock.patch.object(tempfile, 'TemporaryDirectory', return_value=temporary):
+                fixture.setUp()
+            try:
+                self.assertEqual(fixture.root, root.resolve())
+            finally:
+                fixture.doCleanups()
+            temporary.cleanup.assert_called_once()
 
 
 class SnapshotTests(TemporaryRoot):

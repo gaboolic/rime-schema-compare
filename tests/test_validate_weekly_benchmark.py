@@ -173,6 +173,10 @@ class WorkflowTests(unittest.TestCase):
         text = '\n'.join(s.get('run', '') for s in steps)
         self.assertIn('--require-all-bodies', text)
         self.assertIn('validate_weekly_benchmark.py', text)
+        regression = next(s['run'] for s in steps if s['name'].startswith('Install dependencies'))
+        self.assertLess(regression.index('New-Item'), regression.index('python -m pip'))
+        for filename in ('dependencies.log', 'regression-tests.log', 'shell-tests.log'):
+            self.assertIn(filename, regression)
         upload = next(s for s in steps if s.get('uses', '').startswith('actions/upload-artifact'))
         self.assertEqual(upload['if'], 'always()')
         self.assertNotIn('.cache', upload['with']['path'])
