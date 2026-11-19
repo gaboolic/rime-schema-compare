@@ -4,6 +4,8 @@ on:
   push:
     branches: [main]
     paths:
+      - .gitattributes
+      - tests/test_publication_git_attributes.py
       - scripts/download_public_articles.py
       - scripts/public_source_transport.py
       - scripts/download_github_weekly.py

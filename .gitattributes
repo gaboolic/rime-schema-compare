@@ -1,0 +1,8 @@
+# Keep repository policy and generated presentation files on LF.
+.gitattributes text eol=lf
+report/*.md text eol=lf
+data/corpus/public_articles_*.meta.json text eol=lf
+
+# Raw upstream bodies are evidence: retain every byte, including EOF whitespace.
+# Exempt only these original text files from Git's formatting checks.
+data/corpus/public_articles_*.txt -text -whitespace
