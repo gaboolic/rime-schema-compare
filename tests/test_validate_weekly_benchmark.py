@@ -241,6 +241,21 @@ class SourceProvenanceTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_public_source_smoke_automatically_checks_network_without_publish_permissions(self):
+        workflow = yaml.load((ROOT / '.github/workflows/public-source-smoke.yml').read_text(encoding='utf-8'), Loader=yaml.BaseLoader)
+        self.assertEqual(workflow['on']['push']['branches'], ['main'])
+        self.assertIn('scripts/public_source_transport.py', workflow['on']['push']['paths'])
+        self.assertEqual(workflow['permissions'], {'contents': 'read'})
+        job = workflow['jobs']['source']
+        self.assertEqual(job['runs-on'], 'windows-latest')
+        checkout = next(s for s in job['steps'] if s.get('uses', '').startswith('actions/checkout'))
+        self.assertEqual(checkout['with']['submodules'], 'false')
+        self.assertEqual(checkout['with']['persist-credentials'], 'false')
+        text = '\n'.join(s.get('run', '') for s in job['steps'])
+        self.assertIn('--limit 5 --delay 5', text)
+        self.assertNotIn('setup_benchmark_vendors.py', text)
+        self.assertNotIn('git push', text)
+
     def test_official_standard_windows_runner_needs_no_browser_or_login(self):
         workflow = yaml.load((ROOT / '.github/workflows/weekly-report.yml').read_text(encoding='utf-8'), Loader=yaml.BaseLoader)
         job = workflow['jobs']['benchmark']

@@ -112,6 +112,8 @@ python scripts/download_public_articles.py --limit 5 --delay 5 --out data/corpus
 
 来源为 `https://news-at.zhihu.com/api/4/news/latest` 的当天 `stories`，正文取同一公开接口的 `/api/4/news/{id}` 字段 `body`；不混入 `top_stories` 中的历史文章，不使用标题/摘要代替正文。最多 5 篇，当天不足 5 篇时如实记录实际篇数。下载器不需要浏览器、Cookie、Access Secret、CLI 或任何 GitHub Secret，只依赖 Python 标准库。可用 `--date YYYY-MM-DD` 指定应匹配的日报日期（不是历史文章下载功能），默认使用北京时间当天。
 
+部分境外 DNS 会把该域名解析到失效的 CDN 别名。仅在系统 DNS 抛出 `getaddrinfo` 错误时，下载器才针对这个固定域名使用 AliDNS 的 HTTPS 公共解析结果尝试连接：动态解析，不硬编码 IP；拒绝私网、回环和保留地址；继续使用原始主机名进行 HTTPS 证书及 SNI 校验。不会关闭 TLS 验证、修改系统 DNS，或绕过已配置的代理。解析服务或证书验证失败时仍停止发布。
+
 语料旁的元数据记录日报日期、采集时间、文章来源链接、正文/语料 SHA-256 和实际篇数。提取正文内容容器，排除作者简介、脚本、导航等；缺失正文、来源过期或任一选中文章失败时不覆盖已有语料。公开内容接口未来可能变化；公开访问也不等于可以自由转载，使用者应遵守网站条款、作者授权和数据使用要求。
 
 Tophub 可以作为榜单目录，但它的知乎热榜只提供标题和原链接，不能解决知乎回答登录限制；当前正文来源不依赖 Tophub 或知乎开放平台鉴权。报告将明确标注“知乎日报公开文章”，不是“知乎热榜回答”。
@@ -132,6 +134,8 @@ python scripts/download_zhihu_hotlist.py --headed --browser-channel chrome --pro
 ### 每周自动采集、评测与发布（GitHub Actions）
 
 [Weekly Benchmark Report](.github/workflows/weekly-report.yml) 在**北京时间每周一 08:00**执行（cron `0 0 * * 1` 使用 UTC；GitHub 可能延迟启动），也可在仓库 Actions 页面手动选择 **Run workflow**。配置需先进入默认分支 `main` 才会按时运行。
+
+另有 [Public Article Source Check](.github/workflows/public-source-smoke.yml)：相关采集代码推送到 `main` 时，会自动在官方 Windows runner 上执行离线测试和最多 5 篇真实正文下载（与生产数量和间隔一致）；只读权限，不下载模型、不发布报告，诊断附件保留 7 天。失败会把具体 DNS、TLS 或超时原因写到任务 Annotations，避免把网络故障统一隐藏成一个错误。正文采集检查通过不等于完整 11 方案评测已在云端完成。
 
 流程首先验证并下载**知乎日报当天最多 5 篇公开文章正文，篇间隔 5 秒**；采集成功后更新所有方案子模块，用 [`setup_benchmark_vendors.py`](scripts/setup_benchmark_vendors.py) 从同一源码版本重建带模型副本、安装官方朙月/八股文并下载校验当前万象 LTS 模型，再对当天语料跑全部 11 个默认测试项。模型缓存每次都根据上游当前附件的大小与 SHA-256 校验，不会静默沿用旧模型。
 

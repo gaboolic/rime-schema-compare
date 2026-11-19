@@ -26,6 +26,9 @@ import urllib.parse
 import urllib.request
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from public_source_transport import DailyHTTPSHandler
+
 SHANGHAI = timezone(timedelta(hours=8))
 API_HOST = "news-at.zhihu.com"
 FEED_URL = f"https://{API_HOST}/api/4/news/latest"
@@ -82,7 +85,7 @@ def fetch_json(url: str, *, timeout: float = 30, attempts: int = 3) -> dict:
     validate_api_url(url)
     if timeout <= 0 or attempts < 1 or attempts > 5:
         raise ValueError("Invalid HTTP timeout/retry settings")
-    opener = urllib.request.build_opener(FixedHostRedirect())
+    opener = urllib.request.build_opener(FixedHostRedirect(), DailyHTTPSHandler())
     for attempt in range(attempts):
         try:
             request = urllib.request.Request(url, headers={

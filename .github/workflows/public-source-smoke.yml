@@ -5,7 +5,9 @@ on:
     branches: [main]
     paths:
       - scripts/download_public_articles.py
+      - scripts/public_source_transport.py
       - tests/test_download_public_articles.py
+      - tests/test_public_source_transport.py
       - scripts/validate_weekly_benchmark.py
       - .github/workflows/public-source-smoke.yml
   workflow_dispatch:
@@ -52,10 +54,10 @@ jobs:
           python -m unittest discover -s tests -v 2>&1 | Tee-Object -FilePath artifacts/public-source-smoke/regression-tests.log
           if ($LASTEXITCODE -ne 0) { throw "Offline regression tests failed" }
 
-      - name: Fetch one current-day public article using the default source
+      - name: Fetch current-day public articles using production limits
         run: |
           $today = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([datetime]::UtcNow, "China Standard Time").ToString("yyyy-MM-dd")
-          python scripts/download_public_articles.py --date $today --limit 1 --delay 0 --out artifacts/public-source-smoke/corpus.txt --diagnostics-dir artifacts/public-source-smoke/diagnostics 2>&1 | Tee-Object -FilePath artifacts/public-source-smoke/download.log
+          python scripts/download_public_articles.py --date $today --limit 5 --delay 5 --out artifacts/public-source-smoke/corpus.txt --diagnostics-dir artifacts/public-source-smoke/diagnostics 2>&1 | Tee-Object -FilePath artifacts/public-source-smoke/download.log
           if ($LASTEXITCODE -ne 0) { throw "Public source smoke download failed; inspect download.log and diagnostics" }
           $metadata = Get-Content artifacts/public-source-smoke/corpus.meta.json -Raw -Encoding utf8 | ConvertFrom-Json
           $count = [int]$metadata.articles
