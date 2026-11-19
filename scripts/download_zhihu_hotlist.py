@@ -89,8 +89,12 @@ def hotlist_description(item: dict) -> str:
     )
 
 
-def download(limit: int = 30, api: str = DEFAULT_API, proxy: str = "") -> list:
+def download(limit: int = 30, api: str = DEFAULT_API, proxy: str = "", *, provenance: dict | None = None) -> list:
     payload = _fetch_json(api, proxy=proxy)
+    if provenance is not None:
+        from datetime import datetime, timezone
+        provenance.update(source_url=api, hotlist_updated_at=payload.get("update_time"),
+                          hotlist_fetched_at=datetime.now(timezone.utc).isoformat())
     rows = payload.get("list", [])
     if not isinstance(rows, list):
         raise RuntimeError("unexpected payload from API: missing 'list'")
@@ -207,7 +211,7 @@ class _ZhihuBrowser:
 
 
 def write_corpus(rows: list, out: Path, browser: "_ZhihuBrowser | None" = None, delay: float = 1.0, max_answers: int = 3,
-                 require_bodies: bool = False) -> int:
+                 require_bodies: bool = False, require_all_bodies: bool = False) -> int:
     lines = []
     fetched = 0
     answer_count = 0
@@ -236,6 +240,8 @@ def write_corpus(rows: list, out: Path, browser: "_ZhihuBrowser | None" = None, 
         lines.append("")
     if require_bodies and fetched == 0:
         raise RuntimeError("No answer bodies fetched; refusing to overwrite corpus with excerpts/titles")
+    if require_all_bodies and (not rows or fetched != len(rows)):
+        raise RuntimeError(f"Answer bodies missing for {len(rows) - fetched}/{len(rows)} questions; refusing to overwrite corpus")
     out.write_text("\n".join(lines), encoding="utf-8")
     from datetime import datetime
     import hashlib
@@ -261,6 +267,7 @@ def main(argv=None) -> int:
     parser.add_argument("--browser-channel", choices=["chromium", "chrome", "msedge"], default="chromium", help="Browser installation to use")
     parser.add_argument("--profile-dir", type=Path, default=None, help="Dedicated persistent browser profile (do not use your regular browser profile)")
     parser.add_argument("--require-bodies", action="store_true", help="Fail without overwriting the corpus if no actual answer bodies are fetched")
+    parser.add_argument("--require-all-bodies", action="store_true", help="Fail without overwriting if any hot-list question has no actual answer body")
     parser.add_argument("--answers", type=int, default=3, help="top-N answers to fetch per question (default: 3)")
     parser.add_argument("--delay", type=float, default=1.0, help="extra seconds to wait between questions (default: 1)")
     args = parser.parse_args(argv)
@@ -269,7 +276,8 @@ def main(argv=None) -> int:
     if args.out is None:
         args.out = ROOT / "data" / "corpus" / f"zhihu_hotlist_{date.today().isoformat()}.txt"
 
-    rows = download(limit=args.limit, api=args.api, proxy=proxy)
+    provenance = {}
+    rows = download(limit=args.limit, api=args.api, proxy=proxy, provenance=provenance)
     if not rows:
         print("no items returned by API", file=sys.stderr)
         return 1
@@ -285,10 +293,11 @@ def main(argv=None) -> int:
 
     try:
         n_lines = write_corpus(rows, args.out, browser=browser, delay=args.delay,
-                               max_answers=args.answers, require_bodies=args.require_bodies)
+                               max_answers=args.answers, require_bodies=args.require_bodies,
+                               require_all_bodies=args.require_all_bodies)
         meta_path = args.out.with_suffix(".meta.json")
         metadata = json.loads(meta_path.read_text(encoding="utf-8"))
-        metadata["source_url"] = args.api
+        metadata.update(provenance)
         metadata["browser_channel"] = args.browser_channel
         meta_path.write_text(json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     finally:

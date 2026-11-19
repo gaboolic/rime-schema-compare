@@ -115,6 +115,23 @@ python scripts/download_zhihu_hotlist.py --headed --browser-channel chrome --pro
 
 输出语料旁会生成 `.meta.json`，记录实际回答数、来源链接和语料哈希。`--require-bodies` 在一条回答也未取得时会报错并保留原语料，避免把摘要测试误当正文测试。部分问题失败时仍可能回退到摘要，须检查元数据的 `fallback_questions`。持久化目录可能包含会话 Cookie，不要提交或分享，也不要指定日常 Chrome 用户目录。
 
+### 每周自动采集、评测与发布（GitHub Actions）
+
+[Weekly Benchmark Report](.github/workflows/weekly-report.yml) 在**北京时间每周一 08:00**执行（cron `0 0 * * 1` 使用 UTC；GitHub 可能延迟启动），也可在仓库 Actions 页面手动选择 **Run workflow**。配置需先进入默认分支 `main` 才会按时运行。
+
+流程会更新所有方案子模块，用 [`setup_benchmark_vendors.py`](scripts/setup_benchmark_vendors.py) 从同一源码版本重建带模型副本、安装官方朙月/八股文并下载校验当前万象 LTS 模型；随后抓取当天知乎热榜每题最多 3 条回答，仅对当天语料跑全部 11 个默认测试项。模型缓存每次都根据上游当前附件的大小与 SHA-256 校验，不会静默沿用旧模型。
+
+报告先生成在运行专属的 `artifacts/weekly-...` 暂存目录；[`validate_weekly_benchmark.py`](scripts/validate_weekly_benchmark.py) 会验证热榜 API 更新时间和采集时间均属于当天（北京时间）、每题至少一条正文、无摘要回退、语料/模型哈希、11 项齐全、每项至少 100 句、没有缺码或解码失败，以及实际编译模型和禁用用户词库配置。全部通过后才更新 `report/latest.md`、当天报告，并自动提交当天正文/来源元数据和方案版本到 `main`。失败保留远端旧报告，成功/失败均上传运行日志和原始结果（保留 30 天），不上传浏览器 Cookie 或 profile。
+
+**一次性准备 self-hosted Windows runner：**
+
+1. 在 GitHub 仓库 **Settings → Actions → Runners → New self-hosted runner** 中按页面命令注册一台 Windows 机器，具备 `self-hosted`、`windows` 标签；安装 Git、PowerShell 7、Google Chrome。Python 和 Playwright 依赖由流程安装，仓库已有 librime 运行库。
+2. 本流程使用已经实测可取得正文的**有界面 Chrome**。runner 必须在登录的交互用户会话中运行 `run.cmd`，**不要安装为 Windows 服务**；机器在周一执行期间须在线且不休眠。流程会检查 Chrome、librime 和交互会话条件。
+3. 在 **Settings → Actions → General → Workflow permissions** 允许读写仓库；如 `main` 有分支保护，应允许该自动提交，或改为提交 PR 的发布方式。无需个人访问令牌，但组织策略可能禁用 `GITHUB_TOKEN` 写入。
+4. 首次建议手动运行一次，确认该 runner 的网络可访问 GitHub、热榜接口和知乎。知乎可能要求人工登录/验证；遇到此情况任务会失败，而不会把摘要冒充正文发布。不保证任意云机房 IP 都能抓取成功。
+
+浏览器独立 profile 位于 runner 临时目录，不复用日常 Chrome 用户目录，也不会加入缓存或提交。该定时任务不运行需要前台焦点的系统输入法黑盒测试。
+
 ### 运行 Windows 拼音输入法黑盒评测
 
 Windows 下可单独跑系统/第三方拼音输入法的 GUI 黑盒评测。推荐使用通用入口：

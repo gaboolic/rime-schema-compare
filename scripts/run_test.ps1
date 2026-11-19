@@ -40,6 +40,12 @@ function Get-SubmoduleSnapshots {
             continue
         }
 
+        $checkoutRoot = & git -C $fullPath rev-parse --show-toplevel
+        if ($LASTEXITCODE -ne 0 -or -not $checkoutRoot) { continue }
+        if ((Resolve-Path $checkoutRoot).Path -ne (Resolve-Path $fullPath).Path) {
+            # A generated/uninitialized directory must not report the parent repo's HEAD.
+            continue
+        }
         $commitId = (& git -C $fullPath rev-parse HEAD).Trim()
         if ($LASTEXITCODE -ne 0 -or -not $commitId) {
             continue
@@ -65,8 +71,8 @@ function Get-SubmoduleSnapshots {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
-$artifactsPath = Join-Path $repoRoot $ArtifactsDir
-$reportPath = Join-Path $repoRoot $ReportDir
+$artifactsPath = if ([System.IO.Path]::IsPathRooted($ArtifactsDir)) { $ArtifactsDir } else { Join-Path $repoRoot $ArtifactsDir }
+$reportPath = if ([System.IO.Path]::IsPathRooted($ReportDir)) { $ReportDir } else { Join-Path $repoRoot $ReportDir }
 $resolvedRimeDllPath = if ([System.IO.Path]::IsPathRooted($RimeDllPath)) {
     $RimeDllPath
 }
@@ -143,6 +149,9 @@ try {
 
     Set-Content -Path (Join-Path $reportPath "latest.md") -Value $reportMarkdown -Encoding UTF8
     Set-Content -Path (Join-Path $reportPath $datedReportName) -Value $reportMarkdown -Encoding UTF8
+    # Optional git config lookups can leave exit code 1 even on success.
+    # GitHub's pwsh wrapper exits with LASTEXITCODE, so reset it only here.
+    $global:LASTEXITCODE = 0
 }
 finally {
     Pop-Location

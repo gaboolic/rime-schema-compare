@@ -41,6 +41,29 @@ class BodyDownloadTests(unittest.TestCase):
                 module.write_corpus([{'title': '标题', 'url': 'https://www.zhihu.com/question/1'}], path, delay=0, require_bodies=True)
             self.assertEqual(path.read_text(encoding='utf-8'), 'keep previous corpus')
 
+    def test_require_all_bodies_preserves_corpus_on_partial_download(self):
+        class PartialBrowser:
+            last_fetch = {}
+            def fetch_top_answers(self, qid, max_answers):
+                self.last_fetch = {'question_id': qid, 'answers': []}
+                return ['实际正文'] if qid == '1' else []
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / 'corpus.txt'
+            path.write_text('keep old corpus', encoding='utf-8')
+            rows = [{'url': f'https://www.zhihu.com/question/{qid}', 'title': '问题'} for qid in ('1', '2')]
+            with self.assertRaisesRegex(RuntimeError, 'Answer bodies missing'):
+                module.write_corpus(rows, path, browser=PartialBrowser(), delay=0, require_all_bodies=True)
+            self.assertEqual(path.read_text(encoding='utf-8'), 'keep old corpus')
+
+    def test_download_records_api_update_time(self):
+        from unittest import mock
+        provenance = {}
+        payload = {'update_time': '2026-11-18T00:00:00Z', 'list': [{'title': '问题'}]}
+        with mock.patch.object(module, '_fetch_json', return_value=payload):
+            self.assertEqual(module.download(provenance=provenance), payload['list'])
+        self.assertEqual(provenance['hotlist_updated_at'], payload['update_time'])
+        self.assertTrue(provenance['hotlist_fetched_at'].endswith('+00:00'))
+
     def test_rendered_bodies_override_excerpt_and_record_provenance(self):
         import json
         class FakeBrowser:
