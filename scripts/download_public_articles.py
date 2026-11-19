@@ -16,6 +16,8 @@ import os
 from pathlib import Path
 import re
 import shutil
+import socket
+import ssl
 import sys
 import tempfile
 import time
@@ -53,6 +55,28 @@ class FixedHostRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+def network_error_description(exc: BaseException) -> str:
+    """Retain actionable causes without exposing proxy credentials or query secrets."""
+    reason = getattr(exc, "reason", exc)
+    if isinstance(reason, ssl.SSLCertVerificationError):
+        category = "TLS_CERTIFICATE_VERIFY_FAILED"
+    elif isinstance(reason, ssl.SSLError):
+        category = "TLS_ERROR"
+    elif isinstance(reason, socket.gaierror):
+        category = "DNS_ERROR"
+    elif isinstance(reason, TimeoutError):
+        category = "TIMEOUT"
+    else:
+        category = type(reason).__name__
+    # Arbitrary URLError strings can contain an entire private proxy config.
+    # Typed OS/TLS exceptions retain their actionable, sanitized reason below.
+    message = ("unclassified network failure" if isinstance(reason, str) else str(reason))
+    message = message.replace("\r", " ").replace("\n", " ")
+    message = re.sub(r"(?i)(https?://)[^/\s@]+@", r"\1[redacted]@", message)
+    message = re.sub(r"(?i)((?:access_secret|token|password|api_key)=)[^&\s]+", r"\1[redacted]", message)
+    return f"{category}: {message[:500]}"
+
+
 def fetch_json(url: str, *, timeout: float = 30, attempts: int = 3) -> dict:
     """Bounded, read-only GET retries. TLS certificate verification stays enabled."""
     validate_api_url(url)
@@ -78,9 +102,11 @@ def fetch_json(url: str, *, timeout: float = 30, attempts: int = 3) -> dict:
         except urllib.error.HTTPError as exc:
             if exc.code not in {408, 429, 500, 502, 503, 504} or attempt + 1 == attempts:
                 raise RuntimeError(f"Daily API HTTP {exc.code}") from None
-        except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException):
+        except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
+            description = network_error_description(exc)
+            print(f"[Daily API attempt {attempt + 1}/{attempts}] {description}", file=sys.stderr)
             if attempt + 1 == attempts:
-                raise RuntimeError("Daily API network request failed after bounded retries") from None
+                raise RuntimeError(f"Daily API network request failed after bounded retries: {description}") from None
         if attempt + 1 < attempts:
             time.sleep(2 ** attempt)
     raise RuntimeError("Daily API request failed")
@@ -305,8 +331,14 @@ def main(argv=None) -> int:
     args = parser.parse_args(argv)
     day = args.date or shanghai_today()
     out = args.out or ROOT / "data" / "corpus" / f"public_articles_{day.isoformat()}.txt"
-    metadata = download_articles(out, expected_day=day, limit=args.limit, delay=args.delay,
-                                 min_hanzi=args.min_hanzi, diagnostics_dir=args.diagnostics_dir)
+    try:
+        metadata = download_articles(out, expected_day=day, limit=args.limit, delay=args.delay,
+                                     min_hanzi=args.min_hanzi, diagnostics_dir=args.diagnostics_dir)
+    except (ValueError, OSError, RuntimeError) as exc:
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            message = str(exc).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
+            print(f"::error title=Public article download failed::{message}", flush=True)
+        raise
     print(f"Downloaded {metadata['articles']} current-day public article bodies, {metadata['corpus_bytes']} bytes -> {out}")
     return 0
 

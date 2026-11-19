@@ -187,6 +187,25 @@ class FetchTests(unittest.TestCase):
         self.assertEqual(opener.open.call_count, 2)
         self.assertNotIn('secret', str(raised.exception))
 
+    def test_certificate_failure_retains_actionable_reason(self):
+        opener = mock.Mock()
+        certificate = module.ssl.SSLCertVerificationError(1, 'certificate verify failed: certificate has expired')
+        opener.open.side_effect = urllib.error.URLError(certificate)
+        with mock.patch.object(module.urllib.request, 'build_opener', return_value=opener):
+            with self.assertRaisesRegex(RuntimeError, 'TLS_CERTIFICATE_VERIFY_FAILED.*expired'):
+                module.fetch_json(module.FEED_URL, attempts=1)
+
+    def test_dns_failure_is_distinguished_from_timeout(self):
+        self.assertIn('DNS_ERROR', module.network_error_description(urllib.error.URLError(module.socket.gaierror(-2, 'Name not known'))))
+        self.assertIn('TIMEOUT', module.network_error_description(TimeoutError('read timed out')))
+
+    def test_network_error_redacts_proxy_credentials_and_tokens(self):
+        message = module.network_error_description(OSError('proxy https://alice:private@proxy.example/path token=hidden'))
+        self.assertNotIn('private', message)
+        self.assertNotIn('alice', message)
+        self.assertNotIn('hidden', message)
+        self.assertIn('[redacted]', message)
+
     def test_html_or_non_object_payload_is_not_a_feed(self):
         for payload in (b'<html>403 login required</html>', b'[]'):
             opener = mock.Mock()

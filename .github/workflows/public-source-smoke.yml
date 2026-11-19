@@ -1,0 +1,76 @@
+name: Public Article Source Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/download_public_articles.py
+      - tests/test_download_public_articles.py
+      - scripts/validate_weekly_benchmark.py
+      - .github/workflows/public-source-smoke.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-source-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  source:
+    runs-on: windows-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      PYTHONUTF8: "1"
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - name: Checkout source without vendors or stored credentials
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          persist-credentials: false
+
+      - name: Initialize isolated smoke evidence directory
+        run: |
+          New-Item -ItemType Directory -Path artifacts/public-source-smoke -Force | Out-Null
+          "Public source check run $env:GITHUB_RUN_ID, attempt $env:GITHUB_RUN_ATTEMPT" | Set-Content artifacts/public-source-smoke/status.txt -Encoding utf8
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies and run offline regression tests
+        run: |
+          python -m pip install -r requirements.txt 2>&1 | Tee-Object -FilePath artifacts/public-source-smoke/dependencies.log
+          if ($LASTEXITCODE -ne 0) { throw "Dependency installation failed" }
+          python -m unittest discover -s tests -v 2>&1 | Tee-Object -FilePath artifacts/public-source-smoke/regression-tests.log
+          if ($LASTEXITCODE -ne 0) { throw "Offline regression tests failed" }
+
+      - name: Fetch one current-day public article using the default source
+        run: |
+          $today = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([datetime]::UtcNow, "China Standard Time").ToString("yyyy-MM-dd")
+          python scripts/download_public_articles.py --date $today --limit 1 --delay 0 --out artifacts/public-source-smoke/corpus.txt --diagnostics-dir artifacts/public-source-smoke/diagnostics 2>&1 | Tee-Object -FilePath artifacts/public-source-smoke/download.log
+          if ($LASTEXITCODE -ne 0) { throw "Public source smoke download failed; inspect download.log and diagnostics" }
+          $metadata = Get-Content artifacts/public-source-smoke/corpus.meta.json -Raw -Encoding utf8 | ConvertFrom-Json
+          $count = [int]$metadata.articles
+          if ($count -lt 1 -or [string]::IsNullOrWhiteSpace($metadata.source_name)) { throw "Missing source name or actual article count" }
+          $actualHash = (Get-FileHash artifacts/public-source-smoke/corpus.txt -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($metadata.corpus_sha256 -ne $actualHash) { throw "Downloaded corpus SHA256 differs from metadata" }
+          $message = "source_name=$($metadata.source_name); articles=$count; date=$today; SHA256=$actualHash"
+          $message = $message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
+          Write-Output "::notice title=Public article source download succeeded::$message"
+
+      - name: Upload only smoke evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: public-source-smoke-${{ github.run_id }}-${{ github.run_attempt }}
+          path: artifacts/public-source-smoke/
+          if-no-files-found: warn
+          retention-days: 7
