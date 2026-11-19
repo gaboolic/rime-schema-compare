@@ -132,6 +132,97 @@ class ValidationTests(unittest.TestCase):
         self.assertEqual(latest, (report / '2026-11-18.md').read_text(encoding='utf-8'))
 
 
+class PublicArticleValidationTests(unittest.TestCase):
+    def make_case(self):
+        case = ValidationTests()
+        case.setUp()
+        self.addCleanup(case.doCleanups)
+        body = '这是真实文章正文内容，用于离线校验来源和哈希，不是标题或者摘要。' * 3
+        case.corpus.write_text('链接：https://daily.zhihu.com/story/123\n文章标题\n' + body + '\n', encoding='utf-8')
+        case.meta = {
+            'source_kind': 'public_articles', 'source_id': 'zhihu_daily', 'source_name': '知乎日报公开文章',
+            'source_url': 'https://news-at.zhihu.com/api/4/news/latest', 'feed_date': '2026-11-18',
+            'fetched_at': '2026-11-18T08:30:00+08:00', 'feed_fetched_at': '2026-11-18T00:00:00Z',
+            'articles': 1, 'articles_with_bodies': 1, 'fallback_articles': 0,
+            'corpus_bytes': case.corpus.stat().st_size, 'corpus_sha256': hashlib.sha256(case.corpus.read_bytes()).hexdigest(),
+            'article_details': [{'article_id': '123', 'title': '文章标题',
+                'url': 'https://daily.zhihu.com/story/123', 'api_url': 'https://news-at.zhihu.com/api/4/news/123',
+                'body': body, 'body_characters': len(body), 'body_sha256': hashlib.sha256(body.encode('utf-8')).hexdigest()}],
+        }
+        return case
+
+    def test_valid_daily_bodies_without_hotlist_or_login_metadata(self):
+        case = self.make_case()
+        payload, meta = case.validate()
+        self.assertEqual(len(payload['summary']), 11)
+        self.assertEqual(meta['articles'], 1)
+        self.assertNotIn('question_details', meta)
+
+    def test_stale_daily_feed_rejected(self):
+        case = self.make_case()
+        case.meta['feed_date'] = '2026-11-17'
+        with self.assertRaisesRegex(ValueError, 'feed date is stale'):
+            case.validate()
+
+    def test_article_fallback_rejected(self):
+        case = self.make_case()
+        case.meta['fallback_articles'] = 1
+        with self.assertRaisesRegex(ValueError, 'fallback'):
+            case.validate()
+
+    def test_body_hash_mismatch_rejected(self):
+        case = self.make_case()
+        case.meta['article_details'][0]['body_sha256'] = '0' * 64
+        with self.assertRaisesRegex(ValueError, 'body SHA256 mismatch'):
+            case.validate()
+
+    def test_wrong_public_api_domain_rejected(self):
+        case = self.make_case()
+        case.meta['article_details'][0]['api_url'] = 'https://example.invalid/body'
+        with self.assertRaisesRegex(ValueError, 'body API URL'):
+            case.validate()
+
+    def test_duplicate_articles_rejected(self):
+        case = self.make_case()
+        case.meta['articles'] = case.meta['articles_with_bodies'] = 2
+        case.meta['article_details'] *= 2
+        with self.assertRaisesRegex(ValueError, 'Duplicate article'):
+            case.validate()
+
+    def test_title_only_body_rejected(self):
+        case = self.make_case()
+        article = case.meta['article_details'][0]
+        article['body'] = '文章标题'
+        article['body_characters'] = len(article['body'])
+        article['body_sha256'] = hashlib.sha256(article['body'].encode('utf-8')).hexdigest()
+        with self.assertRaisesRegex(ValueError, 'too short'):
+            case.validate()
+
+    def test_extended_hanzi_body_uses_same_minimum_as_downloader(self):
+        case = self.make_case()
+        body = '\U00020000' * 40
+        case.corpus.write_text(body + '\n', encoding='utf-8')
+        case.meta['corpus_sha256'] = hashlib.sha256(case.corpus.read_bytes()).hexdigest()
+        case.meta['corpus_bytes'] = case.corpus.stat().st_size
+        article = case.meta['article_details'][0]
+        article.update(body=body, body_characters=len(body), body_sha256=hashlib.sha256(body.encode('utf-8')).hexdigest())
+        case.validate()
+
+    def test_report_explicitly_labels_daily_articles_not_hotlist_answers(self):
+        case = self.make_case()
+        payload, meta = case.validate()
+        folder = case.root / 'reports'
+        folder.mkdir()
+        for name in ('latest.md', '2026-11-18.md'):
+            (folder / name).write_text('# Rime 评测结果\n\n## Vendor 子模块版本\n', encoding='utf-8')
+        module.annotate_reports(folder, case.corpus, payload, meta, date(2026, 11, 18))
+        report = (folder / 'latest.md').read_text(encoding='utf-8')
+        self.assertIn('知乎日报公开文章', report)
+        self.assertIn('不是知乎热榜回答', report)
+        self.assertNotIn('热榜 API 更新时间', report)
+        self.assertEqual(report, (folder / '2026-11-18.md').read_text(encoding='utf-8'))
+
+
 class SourceProvenanceTests(unittest.TestCase):
     def test_git_head_must_match_evaluated_source_manifest(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -150,7 +241,7 @@ class SourceProvenanceTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
-    def test_official_standard_windows_runner_needs_no_personal_desktop(self):
+    def test_official_standard_windows_runner_needs_no_browser_or_login(self):
         workflow = yaml.load((ROOT / '.github/workflows/weekly-report.yml').read_text(encoding='utf-8'), Loader=yaml.BaseLoader)
         job = workflow['jobs']['benchmark']
         self.assertEqual(job['runs-on'], 'windows-latest')
@@ -160,9 +251,11 @@ class WorkflowTests(unittest.TestCase):
         text = '\n'.join(s.get('run', '') for s in steps)
         self.assertNotIn('[Environment]::UserInteractive', text)
         self.assertNotIn('run.cmd', text)
-        self.assertIn('p.chromium.launch(channel="chrome", headless=False)', text)
+        self.assertNotIn('playwright', text)
+        self.assertNotIn('--profile-dir', text)
+        self.assertNotIn('download_zhihu_hotlist.py', text)
+        self.assertIn('download_public_articles.py', text)
         self.assertIn('find_module(b"octagram")', text)
-        self.assertIn('page.title()', text)
         self.assertIn('git submodule update --init --recursive --depth 1 --remote', text)
 
     def test_monday_schedule_and_publication_guards(self):
@@ -171,8 +264,12 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn('pull_request', workflow['on'])
         steps = workflow['jobs']['benchmark']['steps']
         text = '\n'.join(s.get('run', '') for s in steps)
-        self.assertIn('--require-all-bodies', text)
-        self.assertIn('--limit 5 --answers 1 --delay 5', text)
+        self.assertIn('download_public_articles.py', text)
+        self.assertIn('--limit 5 --delay 5', text)
+        fetch_index = next(i for i, s in enumerate(steps) if s['name'].startswith('Fetch today'))
+        prepare_index = next(i for i, s in enumerate(steps) if s['name'].startswith('Prepare all'))
+        self.assertLess(fetch_index, prepare_index)
+        self.assertIn('zhihu_daily_', text)
         self.assertIn('--diagnostics-dir', text)
         self.assertIn('--min-sentences 20', text)
         self.assertIn('validate_weekly_benchmark.py', text)

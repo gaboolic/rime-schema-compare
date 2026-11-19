@@ -48,40 +48,73 @@ def verify_git_source(directory: Path) -> None:
             f"Submodule HEAD differs from evaluated source: {directory}")
 
 
+def validate_public_article_source(meta: dict, text: str, expected_day: date) -> None:
+    """Verify no-login Daily article provenance, not hot-list summaries."""
+    require(meta["source_id"] == "zhihu_daily", "Unsupported public article source")
+    require(meta["source_url"] == "https://news-at.zhihu.com/api/4/news/latest", "Wrong public article feed URL")
+    require(date.fromisoformat(meta["feed_date"]) == expected_day, "Public article feed date is stale")
+    require(local_day(meta["feed_fetched_at"]) == expected_day, "Public article feed was not fetched today")
+    count = meta["articles"]
+    require(count > 0 and meta["articles_with_bodies"] == count, "Every selected article must have a body")
+    require(meta["fallback_articles"] == 0, "Article summary/title fallback is not publishable")
+    details = meta["article_details"]
+    require(len(details) == count, "Article provenance count mismatch")
+    seen: set[str] = set()
+    for article in details:
+        identity = article["article_id"]
+        require(isinstance(identity, str) and re.fullmatch(r"\d+", identity) is not None, "Invalid article ID")
+        require(identity not in seen, "Duplicate article provenance")
+        seen.add(identity)
+        require(article["url"] == f"https://daily.zhihu.com/story/{identity}", "Invalid article source URL")
+        require(article["api_url"] == f"https://news-at.zhihu.com/api/4/news/{identity}", "Invalid article body API URL")
+        body = article["body"]
+        require(bool(body.strip()) and body in text, "Article body missing from corpus")
+        require(len(re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff\U00020000-\U0002ebef]", body)) >= 30, "Article body is too short to verify")
+        require(article["body_characters"] == len(body), "Article body length mismatch")
+        require(article["body_sha256"] == hashlib.sha256(body.encode("utf-8")).hexdigest(), "Article body SHA256 mismatch")
+
+
 def validate(corpus: Path, artifacts: Path, expected_day: date, *, root: Path = ROOT,
              min_sentences: int = 1) -> tuple[dict, dict]:
     corpus = corpus.resolve()
     meta = json.loads(corpus.with_suffix(".meta.json").read_text(encoding="utf-8"))
     contents = corpus.read_bytes()
     require(local_day(meta["fetched_at"]) == expected_day, "Corpus was not fetched on the requested Shanghai date")
-    require(local_day(meta["hotlist_updated_at"]) == expected_day, "Hot-list API data is stale or has no current-day timestamp")
-    require(local_day(meta["hotlist_fetched_at"]) == expected_day, "Hot-list API was not fetched today")
     require(hashlib.sha256(contents).hexdigest() == meta["corpus_sha256"], "Corpus SHA256 mismatch")
     require(len(contents) == meta["corpus_bytes"], "Corpus size mismatch")
-    questions = meta["questions"]
-    require(questions > 0 and meta["questions_with_answer_bodies"] == questions,
-            "Every hot-list question must have a rendered answer body")
-    require(meta["fallback_questions"] == 0, "Excerpt/title fallback is not publishable")
-    details = meta["question_details"]
-    require(len(details) == questions, "Question provenance count mismatch")
-    seen_questions: set[str] = set()
-    seen_answers: set[str] = set()
-    answer_count = 0
     text = contents.decode("utf-8")
-    for question in details:
-        qid = question["question_id"]
-        require(qid not in seen_questions, "Duplicate question provenance")
-        seen_questions.add(qid)
-        require(bool(question["answers"]), f"No answer provenance for {qid}")
-        for answer in question["answers"]:
-            url = answer["answer_url"]
-            require(re.fullmatch(rf"https://www\.zhihu\.com/question/{re.escape(qid)}/answer/\d+", url) is not None,
-                    f"Invalid answer source URL: {url}")
-            require(url not in seen_answers, f"Duplicate answer source: {url}")
-            seen_answers.add(url)
-            require(bool(answer["text"].strip()) and answer["text"] in text, f"Answer body missing from corpus: {url}")
-            answer_count += 1
-    require(answer_count == meta["answer_bodies"], "Answer count mismatch")
+    kind = meta.get("source_kind", "zhihu_hotlist")
+    if kind == "public_articles":
+        validate_public_article_source(meta, text, expected_day)
+    elif kind == "zhihu_hotlist":
+        # Keep explicit legacy support for historical question/answer corpora.
+        require(local_day(meta["hotlist_updated_at"]) == expected_day, "Hot-list API data is stale or has no current-day timestamp")
+        require(local_day(meta["hotlist_fetched_at"]) == expected_day, "Hot-list API was not fetched today")
+        questions = meta["questions"]
+        require(questions > 0 and meta["questions_with_answer_bodies"] == questions,
+                "Every hot-list question must have a rendered answer body")
+        require(meta["fallback_questions"] == 0, "Excerpt/title fallback is not publishable")
+        details = meta["question_details"]
+        require(len(details) == questions, "Question provenance count mismatch")
+        seen_questions: set[str] = set()
+        seen_answers: set[str] = set()
+        answer_count = 0
+        for question in details:
+            qid = question["question_id"]
+            require(qid not in seen_questions, "Duplicate question provenance")
+            seen_questions.add(qid)
+            require(bool(question["answers"]), f"No answer provenance for {qid}")
+            for answer in question["answers"]:
+                url = answer["answer_url"]
+                require(re.fullmatch(rf"https://www\.zhihu\.com/question/{re.escape(qid)}/answer/\d+", url) is not None,
+                        f"Invalid answer source URL: {url}")
+                require(url not in seen_answers, f"Duplicate answer source: {url}")
+                seen_answers.add(url)
+                require(bool(answer["text"].strip()) and answer["text"] in text, f"Answer body missing from corpus: {url}")
+                answer_count += 1
+        require(answer_count == meta["answer_bodies"], "Answer count mismatch")
+    else:
+        raise ValueError(f"Unsupported corpus source kind: {kind}")
 
     results = list(artifacts.glob("benchmark*.json"))
     require(len(results) == 1, "Use an isolated output directory containing exactly one benchmark JSON")
@@ -134,10 +167,15 @@ def annotate_reports(report_dir: Path, corpus: Path, payload: dict, meta: dict, 
     """Annotate staging reports only, after validation succeeds."""
     summary = payload["summary"]
     first = next(iter(summary.values()))
+    if meta.get("source_kind") == "public_articles":
+        source_lines = [f"- 来源：{meta['source_name']}（公开文章，不是知乎热榜回答）；日报日期：{meta['feed_date']}。",
+                        f"- 实际正文：{meta['articles']} 篇文章；摘要回退 0；无需网页登录、Cookie 或 Access Secret。"]
+    else:
+        source_lines = [f"- 热榜 API 更新时间：{meta['hotlist_updated_at']}。",
+                        f"- 实际正文：{meta['questions']} 个问题、{meta['answer_bodies']} 条回答；摘要回退 0。"]
     context = ["## 自动采集与验证", "",
                f"- 语料日期（北京时间）：{day.isoformat()}；采集：{meta['fetched_at']}。",
-               f"- 热榜 API 更新时间：{meta['hotlist_updated_at']}。",
-               f"- 实际正文：{meta['questions']} 个问题、{meta['answer_bodies']} 条回答；摘要回退 0。",
+               *source_lines,
                f"- 评测：{len(summary)} 个方案、每方案 {first['sentence_total']} 句；解码失败 0。",
                f"- [正文语料](../data/corpus/{corpus.name}) / [来源元数据](../data/corpus/{corpus.with_suffix('.meta.json').name})。",
                f"- 语料 SHA-256：`{meta['corpus_sha256']}`。", "",
@@ -168,7 +206,9 @@ def main() -> None:
     payload, meta = validate(args.corpus, args.artifacts, args.date, min_sentences=args.min_sentences)
     if args.report_dir:
         annotate_reports(args.report_dir, args.corpus, payload, meta, args.date)
-    print(f"Validated {len(payload['summary'])} vendors, {meta['answer_bodies']} answer bodies; no fallback/decode failures")
+    units = (f"{meta['articles']} public article bodies" if meta.get("source_kind") == "public_articles"
+             else f"{meta['answer_bodies']} answer bodies")
+    print(f"Validated {len(payload['summary'])} vendors, {units}; no fallback/decode failures")
 
 
 if __name__ == "__main__":

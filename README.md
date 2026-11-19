@@ -102,7 +102,21 @@ Windows 下也可以继续使用 PowerShell 入口：
 ./scripts/run_test.ps1 -Corpus data/corpus/zhihu_hotlist_2026-11-18.txt
 ```
 
-### 获取知乎热榜回答正文
+### 无需登录的公开正文（当前自动评测来源）
+
+自动评测改用**知乎日报当天公开文章正文**，不再抓取需要登录的知乎热榜回答页面：
+
+```bash
+python scripts/download_public_articles.py --limit 5 --delay 5 --out data/corpus/zhihu_daily_2026-11-19.txt
+```
+
+来源为 `https://news-at.zhihu.com/api/4/news/latest` 的当天 `stories`，正文取同一公开接口的 `/api/4/news/{id}` 字段 `body`；不混入 `top_stories` 中的历史文章，不使用标题/摘要代替正文。最多 5 篇，当天不足 5 篇时如实记录实际篇数。下载器不需要浏览器、Cookie、Access Secret、CLI 或任何 GitHub Secret，只依赖 Python 标准库。可用 `--date YYYY-MM-DD` 指定应匹配的日报日期（不是历史文章下载功能），默认使用北京时间当天。
+
+语料旁的元数据记录日报日期、采集时间、文章来源链接、正文/语料 SHA-256 和实际篇数。提取正文内容容器，排除作者简介、脚本、导航等；缺失正文、来源过期或任一选中文章失败时不覆盖已有语料。公开内容接口未来可能变化；公开访问也不等于可以自由转载，使用者应遵守网站条款、作者授权和数据使用要求。
+
+Tophub 可以作为榜单目录，但它的知乎热榜只提供标题和原链接，不能解决知乎回答登录限制；当前正文来源不依赖 Tophub 或知乎开放平台鉴权。报告将明确标注“知乎日报公开文章”，不是“知乎热榜回答”。
+
+### 获取知乎热榜回答正文（保留的手动工具，非 CI 默认）
 
 安装 Playwright 后，可使用本机 Chrome 和独立持久化会话抓取公开回答：
 
@@ -119,21 +133,21 @@ python scripts/download_zhihu_hotlist.py --headed --browser-channel chrome --pro
 
 [Weekly Benchmark Report](.github/workflows/weekly-report.yml) 在**北京时间每周一 08:00**执行（cron `0 0 * * 1` 使用 UTC；GitHub 可能延迟启动），也可在仓库 Actions 页面手动选择 **Run workflow**。配置需先进入默认分支 `main` 才会按时运行。
 
-流程会更新所有方案子模块，用 [`setup_benchmark_vendors.py`](scripts/setup_benchmark_vendors.py) 从同一源码版本重建带模型副本、安装官方朙月/八股文并下载校验当前万象 LTS 模型；随后默认只抓取当天知乎热榜前 **5 个问题、每题最多 1 条回答、问题间隔 5 秒**，降低请求数量和频率，再对当天语料跑全部 11 个默认测试项。模型缓存每次都根据上游当前附件的大小与 SHA-256 校验，不会静默沿用旧模型。
+流程首先验证并下载**知乎日报当天最多 5 篇公开文章正文，篇间隔 5 秒**；采集成功后更新所有方案子模块，用 [`setup_benchmark_vendors.py`](scripts/setup_benchmark_vendors.py) 从同一源码版本重建带模型副本、安装官方朙月/八股文并下载校验当前万象 LTS 模型，再对当天语料跑全部 11 个默认测试项。模型缓存每次都根据上游当前附件的大小与 SHA-256 校验，不会静默沿用旧模型。
 
-报告先生成在运行专属的 `artifacts/weekly-...` 暂存目录；[`validate_weekly_benchmark.py`](scripts/validate_weekly_benchmark.py) 会验证热榜 API 更新时间和采集时间均属于当天（北京时间）、每题至少一条正文、无摘要回退、语料/模型哈希、11 项齐全、每项至少 20 句、没有缺码或解码失败，以及实际编译模型和禁用用户词库配置。全部通过后才更新 `report/latest.md`、当天报告，并自动提交当天正文/来源元数据和方案版本到 `main`。失败保留远端旧报告，成功/失败均上传运行日志和原始结果（保留 30 天），不上传浏览器 Cookie 或 profile。
+报告先生成在运行专属的 `artifacts/weekly-...` 暂存目录；[`validate_weekly_benchmark.py`](scripts/validate_weekly_benchmark.py) 会验证日报日期和采集时间均属于当天（北京时间）、每篇选中文章均有正文、文章来源 URL 和正文哈希、无摘要回退、语料/模型哈希、11 项齐全、每项至少 20 句、没有缺码或解码失败，以及实际编译模型和禁用用户词库配置。全部通过后才更新 `report/latest.md`、当天报告，并自动提交当天正文/来源元数据和方案版本到 `main`。失败保留远端旧报告，成功/失败均上传运行日志和原始结果（保留 30 天），不上传浏览器 Cookie 或 profile。
 
-减少抓取量不保证解决云端 IP 或登录限制：如果第一个问题就失败，或 HTTP 200 但没有回答 DOM，可能实际返回了登录/验证页。下载日志会记录页面类型、标题和去掉查询参数的跳转地址；即使没有取得任何正文，运行附件中的 `download-diagnostics/questions.json` 也会保留逐题诊断，不会发布摘要替代正文。5 条回答属于小样本，正确率波动较大，不宜直接与大规模正文评测比较。
+当天可能只有少量日报文章，篇数和评测句数会在报告中明确记录；小样本正确率波动较大，也不能直接与旧的知乎热榜回答语料成绩比较。采集失败时仍保留下载日志和逐篇诊断，不会发布摘要替代正文。
 
 **使用 GitHub 官方托管的 `windows-latest`，不需要自托管 runner，也不需要个人电脑保持开机。**
 
-公开仓库使用 GitHub 官方**标准 runner 的计算用量免费**（[官方说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#standard-github-hosted-runners-for-public-repositories)）；本流程没有选择收费的 larger runner。[官方 Windows 镜像](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md) 已预装 Git、PowerShell 和 Chrome，Python/Playwright 依赖由流程安装，librime 使用仓库内的 Windows 运行库。每次运行都会实际验证有界面 Chrome 渲染及 octagram 模块，不以本地登录会话或 `UserInteractive` 标记作为运行前提。仓库与子模块使用浅克隆，减少官方 runner 的磁盘占用。
+公开仓库使用 GitHub 官方**标准 runner 的计算用量免费**（[官方说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#standard-github-hosted-runners-for-public-repositories)）；本流程没有选择收费的 larger runner。[官方 Windows 镜像](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md) 已预装 Git 和 PowerShell，Python 依赖由流程安装，librime 使用仓库内的 Windows 运行库。每次运行都会验证 librime 的 octagram 模块；自动采集不安装 Playwright、不启动 Chrome，也不需要桌面或登录会话。仓库与子模块使用浅克隆，减少官方 runner 的磁盘占用。
 
 1. 确认仓库 **Actions** 已启用，并在 **Settings → Actions → General → Workflow permissions** 允许写入仓库；如 `main` 有分支保护，应允许自动提交，或改为提交 PR 的发布方式。无需个人访问令牌，但组织策略可能限制 `GITHUB_TOKEN` 写入。
-2. 首次建议手动运行一次，验证官方 runner 上的完整链路。**免费提供计算环境不等于知乎一定放行云机房 IP**；遇到 403、登录或验证码要求，流程会失败并保留旧报告，不会用摘要冒充正文发布。
+2. 首次建议手动运行一次，验证官方 runner 上的完整链路。外部公开接口仍可能暂时不可用；遇到网络错误、日报未更新或正文不完整时，流程会失败并保留旧报告，不会用摘要冒充正文发布。
 3. 每次任务使用独立的临时 Windows 环境；无需注册 runner、配置本地自动登录或运行 `run.cmd`。
 
-浏览器独立 profile 位于 runner 临时目录，不复用日常 Chrome 用户目录，也不会加入缓存或提交。该定时任务不运行需要前台焦点的系统输入法黑盒测试。
+自动流程不创建浏览器 profile，也不接收知乎登录凭据。保留的手动浏览器下载工具独立于 CI，其 profile 不应提交或分享。该定时任务不运行需要前台焦点的系统输入法黑盒测试。
 
 ### 运行 Windows 拼音输入法黑盒评测
 
