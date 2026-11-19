@@ -104,19 +104,19 @@ Windows 下也可以继续使用 PowerShell 入口：
 
 ### 无需登录的公开正文（当前自动评测来源）
 
-自动评测改用**知乎日报当天公开文章正文**，不再抓取需要登录的知乎热榜回答页面：
+自动评测默认使用 **GitHub 托管的《科技爱好者周刊》最新一期完整原始 Markdown**，不再依赖知乎域名、网页登录或正文摘要接口：
 
 ```bash
-python scripts/download_public_articles.py --limit 5 --delay 5 --out data/corpus/zhihu_daily_2026-11-19.txt
+python scripts/download_public_articles.py --source github-weekly --out data/corpus/public_articles_2026-11-19.txt
 ```
 
-来源为 `https://news-at.zhihu.com/api/4/news/latest` 的当天 `stories`，正文取同一公开接口的 `/api/4/news/{id}` 字段 `body`；不混入 `top_stories` 中的历史文章，不使用标题/摘要代替正文。最多 5 篇，当天不足 5 篇时如实记录实际篇数。下载器不需要浏览器、Cookie、Access Secret、CLI 或任何 GitHub Secret，只依赖 Python 标准库。可用 `--date YYYY-MM-DD` 指定应匹配的日报日期（不是历史文章下载功能），默认使用北京时间当天。
+来源为 [ruanyf/weekly](https://github.com/ruanyf/weekly)：先固定目录索引的提交，再选最新期号、固定对应正文提交，保存该文件的完整原始 Markdown，不改写、不把外链文章摘要冒充外链全文。默认只选最新 1 期，而不是当天 5 篇新闻；原刊本身含有资讯摘编，报告会注明。下载器只访问 GitHub API 和 GitHub 原始文件域名，不请求文章内的外链，也不下载图片。无需浏览器、知乎 Cookie 或 Access Secret；Actions 使用自动提供的 `GITHUB_TOKEN` 读 GitHub API（仅发送到 API 主机），无需配置个人凭据。可用 `--date YYYY-MM-DD` 指定本次选择日期，默认北京时间当天；源码更新时间允许早于选择日期，但不得超过 14 天，也不得来自未来。
 
-部分境外 DNS 会把该域名解析到失效的 CDN 别名。仅在系统 DNS 抛出 `getaddrinfo` 错误时，下载器才针对这个固定域名使用 AliDNS 的 HTTPS 公共解析结果尝试连接：动态解析，不硬编码 IP；拒绝私网、回环和保留地址；继续使用原始主机名进行 HTTPS 证书及 SNI 校验。不会关闭 TLS 验证、修改系统 DNS，或绕过已配置的代理。解析服务或证书验证失败时仍停止发布。
+保留 `--source zhihu-daily` 作为可选手动来源。日报 API `news-at.zhihu.com` 在部分境外 DNS 下会指向失效别名；虽然本地通过 AliDNS 回退可用，官方 runner 实测仍可能解析失败，因此它不再是 CI 默认来源。可选回退始终保留原始主机名的证书/SNI 校验，不固定 IP、不改系统 DNS、不接受私网目标，也不会关闭 HTTPS 验证。
 
-语料旁的元数据记录日报日期、采集时间、文章来源链接、正文/语料 SHA-256 和实际篇数。提取正文内容容器，排除作者简介、脚本、导航等；缺失正文、来源过期或任一选中文章失败时不覆盖已有语料。公开内容接口未来可能变化；公开访问也不等于可以自由转载，使用者应遵守网站条款、作者授权和数据使用要求。
+语料旁的元数据分别记录选择/采集日期、源码最近更新时间（不冒充首次发表日期）、固定提交、原始链接、正文/语料 SHA-256 和署名。原始 Markdown 保持未改写；缺失正文、超龄、哈希或来源不符时不覆盖已有语料。作者博客声明的非商用、保持署名等许可要求仍需遵守；抓取用于研究评测不等于可以自由改编或商业转载，原文也不会因进入语料目录而变成项目代码的许可证。
 
-Tophub 可以作为榜单目录，但它的知乎热榜只提供标题和原链接，不能解决知乎回答登录限制；当前正文来源不依赖 Tophub 或知乎开放平台鉴权。报告将明确标注“知乎日报公开文章”，不是“知乎热榜回答”。
+Tophub 可以作为榜单目录，但它的知乎热榜只提供标题和原链接，不能解决知乎回答登录限制；当前正文来源不依赖 Tophub 或知乎开放平台鉴权。报告默认明确标注“科技爱好者周刊完整原始正文”，不称为“知乎热榜回答”或“当日新闻”。
 
 ### 获取知乎热榜回答正文（保留的手动工具，非 CI 默认）
 
@@ -135,20 +135,20 @@ python scripts/download_zhihu_hotlist.py --headed --browser-channel chrome --pro
 
 [Weekly Benchmark Report](.github/workflows/weekly-report.yml) 在**北京时间每周一 08:00**执行（cron `0 0 * * 1` 使用 UTC；GitHub 可能延迟启动），也可在仓库 Actions 页面手动选择 **Run workflow**。配置需先进入默认分支 `main` 才会按时运行。
 
-另有 [Public Article Source Check](.github/workflows/public-source-smoke.yml)：相关采集代码推送到 `main` 时，会自动在官方 Windows runner 上执行离线测试和最多 5 篇真实正文下载（与生产数量和间隔一致）；只读权限，不下载模型、不发布报告，诊断附件保留 7 天。失败会把具体 DNS、TLS 或超时原因写到任务 Annotations，避免把网络故障统一隐藏成一个错误。正文采集检查通过不等于完整 11 方案评测已在云端完成。
+另有 [Public Article Source Check](.github/workflows/public-source-smoke.yml)：相关采集代码推送到 `main` 时，会自动在官方 Windows runner 上执行离线测试和与生产一致的最新一期完整周刊下载；只读权限，不下载模型、不发布报告，诊断附件保留 7 天。失败会把具体 DNS、TLS 或超时原因写到任务 Annotations，避免把网络故障统一隐藏成一个错误。正文采集检查通过不等于完整 11 方案评测已在云端完成。
 
-流程首先验证并下载**知乎日报当天最多 5 篇公开文章正文，篇间隔 5 秒**；采集成功后更新所有方案子模块，用 [`setup_benchmark_vendors.py`](scripts/setup_benchmark_vendors.py) 从同一源码版本重建带模型副本、安装官方朙月/八股文并下载校验当前万象 LTS 模型，再对当天语料跑全部 11 个默认测试项。模型缓存每次都根据上游当前附件的大小与 SHA-256 校验，不会静默沿用旧模型。
+流程首先验证并下载 **GitHub 上最新一期周刊完整原始正文**；采集成功后更新所有方案子模块，用 [`setup_benchmark_vendors.py`](scripts/setup_benchmark_vendors.py) 从同一源码版本重建带模型副本、安装官方朙月/八股文并下载校验当前万象 LTS 模型，再对当天语料跑全部 11 个默认测试项。模型缓存每次都根据上游当前附件的大小与 SHA-256 校验，不会静默沿用旧模型。
 
-报告先生成在运行专属的 `artifacts/weekly-...` 暂存目录；[`validate_weekly_benchmark.py`](scripts/validate_weekly_benchmark.py) 会验证日报日期和采集时间均属于当天（北京时间）、每篇选中文章均有正文、文章来源 URL 和正文哈希、无摘要回退、语料/模型哈希、11 项齐全、每项至少 20 句、没有缺码或解码失败，以及实际编译模型和禁用用户词库配置。全部通过后才更新 `report/latest.md`、当天报告，并自动提交当天正文/来源元数据和方案版本到 `main`。失败保留远端旧报告，成功/失败均上传运行日志和原始结果（保留 30 天），不上传浏览器 Cookie 或 profile。
+报告先生成在运行专属的 `artifacts/weekly-...` 暂存目录；[`validate_weekly_benchmark.py`](scripts/validate_weekly_benchmark.py) 会验证选择/采集日期属于当天（北京时间）、源码更新时间不超过 14 天、固定提交及原始正文完整一致、文章来源 URL 和正文哈希、无摘要回退、语料/模型哈希、11 项齐全、每项至少 20 句、没有缺码或解码失败，以及实际编译模型和禁用用户词库配置。全部通过后才更新 `report/latest.md`、当天报告，并自动提交当天正文/来源元数据和方案版本到 `main`。失败保留远端旧报告，成功/失败均上传运行日志和原始结果（保留 30 天），不上传浏览器 Cookie 或 profile。
 
-当天可能只有少量日报文章，篇数和评测句数会在报告中明确记录；小样本正确率波动较大，也不能直接与旧的知乎热榜回答语料成绩比较。采集失败时仍保留下载日志和逐篇诊断，不会发布摘要替代正文。
+周刊每周更新，而不是每天发布；采集日和源码更新时间均会明确展示。语料种类及评测句数变化会影响成绩，不能直接与旧的知乎热榜回答或日报语料成绩比较。采集失败时仍保留下载日志和逐篇诊断，不会发布摘要替代正文。
 
 **使用 GitHub 官方托管的 `windows-latest`，不需要自托管 runner，也不需要个人电脑保持开机。**
 
 公开仓库使用 GitHub 官方**标准 runner 的计算用量免费**（[官方说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#standard-github-hosted-runners-for-public-repositories)）；本流程没有选择收费的 larger runner。[官方 Windows 镜像](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md) 已预装 Git 和 PowerShell，Python 依赖由流程安装，librime 使用仓库内的 Windows 运行库。每次运行都会验证 librime 的 octagram 模块；自动采集不安装 Playwright、不启动 Chrome，也不需要桌面或登录会话。仓库与子模块使用浅克隆，减少官方 runner 的磁盘占用。
 
 1. 确认仓库 **Actions** 已启用，并在 **Settings → Actions → General → Workflow permissions** 允许写入仓库；如 `main` 有分支保护，应允许自动提交，或改为提交 PR 的发布方式。无需个人访问令牌，但组织策略可能限制 `GITHUB_TOKEN` 写入。
-2. 首次建议手动运行一次，验证官方 runner 上的完整链路。外部公开接口仍可能暂时不可用；遇到网络错误、日报未更新或正文不完整时，流程会失败并保留旧报告，不会用摘要冒充正文发布。
+2. 首次建议手动运行一次，验证官方 runner 上的完整链路。外部公开接口仍可能暂时不可用；遇到网络错误、源码超过 14 天未更新或正文不完整时，流程会失败并保留旧报告，不会用摘要冒充正文发布。
 3. 每次任务使用独立的临时 Windows 环境；无需注册 runner、配置本地自动登录或运行 `run.cmd`。
 
 自动流程不创建浏览器 profile，也不接收知乎登录凭据。保留的手动浏览器下载工具独立于 CI，其 profile 不应提交或分享。该定时任务不运行需要前台焦点的系统输入法黑盒测试。

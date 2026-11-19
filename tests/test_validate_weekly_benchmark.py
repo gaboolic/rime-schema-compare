@@ -151,6 +151,46 @@ class PublicArticleValidationTests(unittest.TestCase):
         }
         return case
 
+    def make_weekly_case(self):
+        case = self.make_case()
+        body = '# 科技爱好者周刊（第 123 期）：离线测试\n' + case.meta['article_details'][0]['body']
+        case.corpus.write_bytes(body.encode('utf-8'))
+        ref = 'a' * 40
+        case.meta.update(source_id='ruanyf_weekly', source_name='科技爱好者周刊（GitHub原始整期正文）',
+            source_url='https://github.com/ruanyf/weekly', source_ref=ref, index_ref='b' * 40,
+            selection_date='2026-11-18', index_fetched_at='2026-11-18T08:00:00+08:00',
+            source_updated_at='2026-11-13T10:22:34Z', attribution='离线测试署名',
+            corpus_bytes=case.corpus.stat().st_size, corpus_sha256=hashlib.sha256(case.corpus.read_bytes()).hexdigest())
+        case.meta['article_details'][0].update(body=body, body_characters=len(body), body_sha256=case.meta['corpus_sha256'],
+            url=f'https://github.com/ruanyf/weekly/blob/{ref}/docs/issue-123.md',
+            api_url=f'https://raw.githubusercontent.com/ruanyf/weekly/{ref}/docs/issue-123.md')
+        return case
+
+    def test_weekly_records_real_update_date_separately_from_selection_date(self):
+        case = self.make_weekly_case()
+        _, meta = case.validate()
+        self.assertEqual(meta['source_updated_at'], '2026-11-13T10:22:34Z')
+        self.assertEqual(meta['selection_date'], '2026-11-18')
+
+    def test_weekly_older_than_two_weeks_rejected(self):
+        case = self.make_weekly_case()
+        case.meta['source_updated_at'] = '2026-11-01T00:00:00Z'
+        with self.assertRaisesRegex(ValueError, 'stale'):
+            case.validate()
+
+    def test_weekly_must_pin_commit_not_moving_branch(self):
+        case = self.make_weekly_case()
+        case.meta['source_ref'] = 'master'
+        with self.assertRaisesRegex(ValueError, 'immutable'):
+            case.validate()
+
+    def test_weekly_cannot_append_unproven_extra_corpus_text(self):
+        case = self.make_weekly_case()
+        case.corpus.write_text(case.meta['article_details'][0]['body'] + '\n额外正文', encoding='utf-8')
+        case.meta.update(corpus_bytes=case.corpus.stat().st_size, corpus_sha256=hashlib.sha256(case.corpus.read_bytes()).hexdigest())
+        with self.assertRaisesRegex(ValueError, 'original Markdown exactly'):
+            case.validate()
+
     def test_valid_daily_bodies_without_hotlist_or_login_metadata(self):
         case = self.make_case()
         payload, meta = case.validate()
@@ -252,7 +292,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(checkout['with']['submodules'], 'false')
         self.assertEqual(checkout['with']['persist-credentials'], 'false')
         text = '\n'.join(s.get('run', '') for s in job['steps'])
-        self.assertIn('--limit 5 --delay 5', text)
+        self.assertIn('--source github-weekly', text)
         self.assertNotIn('setup_benchmark_vendors.py', text)
         self.assertNotIn('git push', text)
 
@@ -280,11 +320,11 @@ class WorkflowTests(unittest.TestCase):
         steps = workflow['jobs']['benchmark']['steps']
         text = '\n'.join(s.get('run', '') for s in steps)
         self.assertIn('download_public_articles.py', text)
-        self.assertIn('--limit 5 --delay 5', text)
-        fetch_index = next(i for i, s in enumerate(steps) if s['name'].startswith('Fetch today'))
+        self.assertIn('--source github-weekly', text)
+        fetch_index = next(i for i, s in enumerate(steps) if s['name'].startswith('Fetch '))
         prepare_index = next(i for i, s in enumerate(steps) if s['name'].startswith('Prepare all'))
         self.assertLess(fetch_index, prepare_index)
-        self.assertIn('zhihu_daily_', text)
+        self.assertIn('public_articles_', text)
         self.assertIn('--diagnostics-dir', text)
         self.assertIn('--min-sentences 20', text)
         self.assertIn('validate_weekly_benchmark.py', text)

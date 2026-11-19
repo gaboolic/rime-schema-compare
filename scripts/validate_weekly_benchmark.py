@@ -49,11 +49,23 @@ def verify_git_source(directory: Path) -> None:
 
 
 def validate_public_article_source(meta: dict, text: str, expected_day: date) -> None:
-    """Verify no-login Daily article provenance, not hot-list summaries."""
-    require(meta["source_id"] == "zhihu_daily", "Unsupported public article source")
-    require(meta["source_url"] == "https://news-at.zhihu.com/api/4/news/latest", "Wrong public article feed URL")
-    require(date.fromisoformat(meta["feed_date"]) == expected_day, "Public article feed date is stale")
-    require(local_day(meta["feed_fetched_at"]) == expected_day, "Public article feed was not fetched today")
+    """Verify pinned public full-text provenance; never confuse selection and publication dates."""
+    source = meta["source_id"]
+    if source == "zhihu_daily":
+        require(meta["source_url"] == "https://news-at.zhihu.com/api/4/news/latest", "Wrong public article feed URL")
+        require(date.fromisoformat(meta["feed_date"]) == expected_day, "Public article feed date is stale")
+        require(local_day(meta["feed_fetched_at"]) == expected_day, "Public article feed was not fetched today")
+    elif source == "ruanyf_weekly":
+        require(meta["source_url"] == "https://github.com/ruanyf/weekly", "Wrong weekly repository URL")
+        for field in ("source_ref", "index_ref"):
+            require(re.fullmatch(r"[0-9a-f]{40}", meta[field]) is not None, "Weekly source must use immutable commit IDs")
+        require(date.fromisoformat(meta["selection_date"]) == expected_day, "Weekly selection date mismatch")
+        require(local_day(meta["index_fetched_at"]) == expected_day, "Weekly index was not fetched today")
+        age = (expected_day - local_day(meta["source_updated_at"])).days
+        require(0 <= age <= 14, "Weekly source update date is future or stale (over 14 days)")
+        require(meta["articles"] == 1, "Select exactly one complete latest weekly issue")
+    else:
+        raise ValueError(f"Unsupported public article source: {source}")
     count = meta["articles"]
     require(count > 0 and meta["articles_with_bodies"] == count, "Every selected article must have a body")
     require(meta["fallback_articles"] == 0, "Article summary/title fallback is not publishable")
@@ -65,8 +77,14 @@ def validate_public_article_source(meta: dict, text: str, expected_day: date) ->
         require(isinstance(identity, str) and re.fullmatch(r"\d+", identity) is not None, "Invalid article ID")
         require(identity not in seen, "Duplicate article provenance")
         seen.add(identity)
-        require(article["url"] == f"https://daily.zhihu.com/story/{identity}", "Invalid article source URL")
-        require(article["api_url"] == f"https://news-at.zhihu.com/api/4/news/{identity}", "Invalid article body API URL")
+        if source == "zhihu_daily":
+            require(article["url"] == f"https://daily.zhihu.com/story/{identity}", "Invalid article source URL")
+            require(article["api_url"] == f"https://news-at.zhihu.com/api/4/news/{identity}", "Invalid article body API URL")
+        else:
+            reference = meta["source_ref"]
+            require(article["url"] == f"https://github.com/ruanyf/weekly/blob/{reference}/docs/issue-{identity}.md", "Invalid pinned weekly source URL")
+            require(article["api_url"] == f"https://raw.githubusercontent.com/ruanyf/weekly/{reference}/docs/issue-{identity}.md", "Invalid pinned weekly raw URL")
+            require(text == article["body"], "Weekly corpus must preserve the complete original Markdown exactly")
         body = article["body"]
         require(bool(body.strip()) and body in text, "Article body missing from corpus")
         require(len(re.findall(r"[\u3400-\u4dbf\u4e00-\u9fff\U00020000-\U0002ebef]", body)) >= 30, "Article body is too short to verify")
@@ -167,7 +185,13 @@ def annotate_reports(report_dir: Path, corpus: Path, payload: dict, meta: dict, 
     """Annotate staging reports only, after validation succeeds."""
     summary = payload["summary"]
     first = next(iter(summary.values()))
-    if meta.get("source_kind") == "public_articles":
+    if meta.get("source_id") == "ruanyf_weekly":
+        source_lines = [f"- 来源：{meta['source_name']}；选择日期：{meta['selection_date']}。",
+                        f"- 源码最近更新时间：{meta['source_updated_at']}（不冒充当日发表；最多允许 14 天）。",
+                        f"- 固定源码提交：`{meta['source_ref']}`。",
+                        "- 实际正文：1 期完整原始 Markdown；包含原刊自带的资讯摘编，不代表外链文章全文；摘要回退 0。",
+                        f"- 署名及使用声明：{meta['attribution']}"]
+    elif meta.get("source_kind") == "public_articles":
         source_lines = [f"- 来源：{meta['source_name']}（公开文章，不是知乎热榜回答）；日报日期：{meta['feed_date']}。",
                         f"- 实际正文：{meta['articles']} 篇文章；摘要回退 0；无需网页登录、Cookie 或 Access Secret。"]
     else:

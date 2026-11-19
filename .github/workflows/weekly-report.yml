@@ -55,7 +55,7 @@ jobs:
           if (-not (Test-Path "lib/rime.dll")) { throw "Missing lib/rime.dll" }
           $today = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([datetime]::UtcNow, "China Standard Time").ToString("yyyy-MM-dd")
           "CORPUS_DATE=$today" >> $env:GITHUB_ENV
-          "CORPUS_PATH=data/corpus/zhihu_daily_$today.txt" >> $env:GITHUB_ENV
+          "CORPUS_PATH=data/corpus/public_articles_$today.txt" >> $env:GITHUB_ENV
           New-Item -ItemType Directory -Path "$env:RUN_DIR/results", "$env:RUN_DIR/report" -Force | Out-Null
           # Public article collection is HTTP-only; verify just the Rime runtime.
           @'
@@ -71,9 +71,11 @@ jobs:
           '@ | python -
           if ($LASTEXITCODE -ne 0) { throw "Hosted librime runtime check failed" }
 
-      - name: Fetch today's public article bodies without login
+      - name: Fetch the latest pinned public weekly issue without login
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          python scripts/download_public_articles.py --date $env:CORPUS_DATE --limit 5 --delay 5 --diagnostics-dir "$env:RUN_DIR/download-diagnostics" --out $env:CORPUS_PATH 2>&1 | Tee-Object -FilePath "$env:RUN_DIR/download.log"
+          python scripts/download_public_articles.py --source github-weekly --date $env:CORPUS_DATE --diagnostics-dir "$env:RUN_DIR/download-diagnostics" --out $env:CORPUS_PATH 2>&1 | Tee-Object -FilePath "$env:RUN_DIR/download.log"
           if ($LASTEXITCODE -ne 0) { throw "Public article download failed; existing reports will not be published over" }
 
       - name: Restore verified model download cache
@@ -123,8 +125,8 @@ jobs:
         run: |
           $paths = @(
             "report/latest.md", "report/${env:CORPUS_DATE}.md",
-            "data/corpus/zhihu_daily_${env:CORPUS_DATE}.txt",
-            "data/corpus/zhihu_daily_${env:CORPUS_DATE}.meta.json",
+            "data/corpus/public_articles_${env:CORPUS_DATE}.txt",
+            "data/corpus/public_articles_${env:CORPUS_DATE}.meta.json",
             "vendor/mingyuepinyin", "vendor/rime-frost", "vendor/rime-frost_with_gram",
             "vendor/rime-ice", "vendor/rime_wanxiang", "vendor/rime_wanxiang_with_gram",
             "vendor/rime-wubi-sentence"

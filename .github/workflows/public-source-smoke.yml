@@ -6,6 +6,8 @@ on:
     paths:
       - scripts/download_public_articles.py
       - scripts/public_source_transport.py
+      - scripts/download_github_weekly.py
+      - tests/test_download_github_weekly.py
       - tests/test_download_public_articles.py
       - tests/test_public_source_transport.py
       - scripts/validate_weekly_benchmark.py
@@ -54,17 +56,19 @@ jobs:
           python -m unittest discover -s tests -v 2>&1 | Tee-Object -FilePath artifacts/public-source-smoke/regression-tests.log
           if ($LASTEXITCODE -ne 0) { throw "Offline regression tests failed" }
 
-      - name: Fetch current-day public articles using production limits
+      - name: Fetch the latest pinned weekly issue using production settings
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           $today = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([datetime]::UtcNow, "China Standard Time").ToString("yyyy-MM-dd")
-          python scripts/download_public_articles.py --date $today --limit 5 --delay 5 --out artifacts/public-source-smoke/corpus.txt --diagnostics-dir artifacts/public-source-smoke/diagnostics 2>&1 | Tee-Object -FilePath artifacts/public-source-smoke/download.log
+          python scripts/download_public_articles.py --date $today --source github-weekly --out artifacts/public-source-smoke/corpus.txt --diagnostics-dir artifacts/public-source-smoke/diagnostics 2>&1 | Tee-Object -FilePath artifacts/public-source-smoke/download.log
           if ($LASTEXITCODE -ne 0) { throw "Public source smoke download failed; inspect download.log and diagnostics" }
           $metadata = Get-Content artifacts/public-source-smoke/corpus.meta.json -Raw -Encoding utf8 | ConvertFrom-Json
           $count = [int]$metadata.articles
           if ($count -lt 1 -or [string]::IsNullOrWhiteSpace($metadata.source_name)) { throw "Missing source name or actual article count" }
           $actualHash = (Get-FileHash artifacts/public-source-smoke/corpus.txt -Algorithm SHA256).Hash.ToLowerInvariant()
           if ($metadata.corpus_sha256 -ne $actualHash) { throw "Downloaded corpus SHA256 differs from metadata" }
-          $message = "source_name=$($metadata.source_name); articles=$count; date=$today; SHA256=$actualHash"
+          $message = "source_name=$($metadata.source_name); issues=$count; selection_date=$today; source_updated_at=$($metadata.source_updated_at); SHA256=$actualHash"
           $message = $message.Replace('%', '%25').Replace("`r", '%0D').Replace("`n", '%0A')
           Write-Output "::notice title=Public article source download succeeded::$message"
 

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Fetch current-day Zhihu Daily public article bodies, without login or browser.
+"""Fetch complete public Chinese text without login or browser.
 
-The public Daily endpoints are not the authenticated developer-platform API.
-No title, feed summary, or older top_stories entry is substituted for a body.
+Default: latest GitHub-hosted technology weekly, pinned to its source commit.
+Optional: current-day Zhihu Daily. No title or feed summary substitutes a body.
 """
 from __future__ import annotations
 
@@ -325,24 +325,30 @@ def download_articles(out: Path, *, expected_day: date | None = None, limit: int
 
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--date", type=date.fromisoformat, default=None, help="Required feed date, ISO YYYY-MM-DD (default: today in Asia/Shanghai)")
+    parser.add_argument("--source", choices=("github-weekly", "zhihu-daily"), default="github-weekly", help="Public text source (default: GitHub-hosted weekly; Daily is opt-in)")
+    parser.add_argument("--date", type=date.fromisoformat, default=None, help="Selection date, ISO YYYY-MM-DD (default: today in Asia/Shanghai)")
     parser.add_argument("--out", type=Path, default=None, help="Output corpus path")
-    parser.add_argument("--limit", type=int, default=5, help="Maximum current-day stories (default: 5)")
-    parser.add_argument("--delay", type=float, default=5, help="Seconds between article GET requests (default: 5)")
+    parser.add_argument("--limit", type=int, default=5, help="Maximum Daily stories; GitHub always selects one complete latest issue")
+    parser.add_argument("--delay", type=float, default=5, help="Seconds between Daily article requests (default: 5)")
     parser.add_argument("--min-hanzi", type=int, default=30, help="Minimum Hanzi in each real body (default: 30)")
     parser.add_argument("--diagnostics-dir", type=Path, default=None)
     args = parser.parse_args(argv)
     day = args.date or shanghai_today()
     out = args.out or ROOT / "data" / "corpus" / f"public_articles_{day.isoformat()}.txt"
     try:
-        metadata = download_articles(out, expected_day=day, limit=args.limit, delay=args.delay,
-                                     min_hanzi=args.min_hanzi, diagnostics_dir=args.diagnostics_dir)
+        if args.source == "github-weekly":
+            from download_github_weekly import download_weekly
+            metadata = download_weekly(out, expected_day=day, diagnostics_dir=args.diagnostics_dir)
+        else:
+            metadata = download_articles(out, expected_day=day, limit=args.limit, delay=args.delay,
+                                         min_hanzi=args.min_hanzi, diagnostics_dir=args.diagnostics_dir)
     except (ValueError, OSError, RuntimeError) as exc:
         if os.environ.get("GITHUB_ACTIONS") == "true":
             message = str(exc).replace("%", "%25").replace("\r", "%0D").replace("\n", "%0A")
             print(f"::error title=Public article download failed::{message}", flush=True)
         raise
-    print(f"Downloaded {metadata['articles']} current-day public article bodies, {metadata['corpus_bytes']} bytes -> {out}")
+    print(f"Downloaded {metadata['articles']} complete public text unit(s) from {metadata['source_name']}, "
+          f"selected on {day.isoformat()}, {metadata['corpus_bytes']} bytes -> {out}")
     return 0
 
 

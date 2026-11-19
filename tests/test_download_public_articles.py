@@ -292,6 +292,19 @@ class DownloadTests(TemporaryRoot):
         self.assertTrue(self.out.exists())
         self.assertTrue(self.meta.exists())
 
+    def test_cli_defaults_to_github_without_calling_daily(self):
+        github = mock.Mock()
+        github.download_weekly.return_value = {'articles': 1, 'source_name': 'GitHub weekly fixture', 'corpus_bytes': 123}
+        with mock.patch.dict(module.sys.modules, {'download_github_weekly': github}), mock.patch.object(module, 'download_articles') as daily:
+            self.assertEqual(module.main(['--date', DAY.isoformat(), '--out', str(self.out)]), 0)
+        github.download_weekly.assert_called_once_with(self.out, expected_day=DAY, diagnostics_dir=None)
+        daily.assert_not_called()
+
+    def test_daily_requires_explicit_source_selection(self):
+        with mock.patch.object(module, 'download_articles', return_value={'articles': 1, 'source_name': 'Daily fixture', 'corpus_bytes': 123}) as daily:
+            self.assertEqual(module.main(['--source', 'zhihu-daily', '--date', DAY.isoformat(), '--out', str(self.out)]), 0)
+        self.assertEqual(daily.call_args.kwargs['expected_day'], DAY)
+
     def test_metadata_replace_failure_rolls_back_corpus(self):
         self.install_old_pair()
         real_replace = module.os.replace
