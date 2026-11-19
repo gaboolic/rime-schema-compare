@@ -150,6 +150,21 @@ class SourceProvenanceTests(unittest.TestCase):
 
 
 class WorkflowTests(unittest.TestCase):
+    def test_official_standard_windows_runner_needs_no_personal_desktop(self):
+        workflow = yaml.load((ROOT / '.github/workflows/weekly-report.yml').read_text(encoding='utf-8'), Loader=yaml.BaseLoader)
+        job = workflow['jobs']['benchmark']
+        self.assertEqual(job['runs-on'], 'windows-latest')
+        steps = job['steps']
+        checkout = next(s for s in steps if s.get('uses', '').startswith('actions/checkout'))
+        self.assertEqual(checkout['with']['fetch-depth'], '1')
+        text = '\n'.join(s.get('run', '') for s in steps)
+        self.assertNotIn('[Environment]::UserInteractive', text)
+        self.assertNotIn('run.cmd', text)
+        self.assertIn('p.chromium.launch(channel="chrome", headless=False)', text)
+        self.assertIn('find_module(b"octagram")', text)
+        self.assertIn('page.title()', text)
+        self.assertIn('git submodule update --init --recursive --depth 1 --remote', text)
+
     def test_monday_schedule_and_publication_guards(self):
         workflow = yaml.load((ROOT / '.github/workflows/weekly-report.yml').read_text(encoding='utf-8'), Loader=yaml.BaseLoader)
         self.assertEqual(workflow['on']['schedule'][0]['cron'], '0 0 * * 1')

@@ -123,12 +123,13 @@ python scripts/download_zhihu_hotlist.py --headed --browser-channel chrome --pro
 
 报告先生成在运行专属的 `artifacts/weekly-...` 暂存目录；[`validate_weekly_benchmark.py`](scripts/validate_weekly_benchmark.py) 会验证热榜 API 更新时间和采集时间均属于当天（北京时间）、每题至少一条正文、无摘要回退、语料/模型哈希、11 项齐全、每项至少 100 句、没有缺码或解码失败，以及实际编译模型和禁用用户词库配置。全部通过后才更新 `report/latest.md`、当天报告，并自动提交当天正文/来源元数据和方案版本到 `main`。失败保留远端旧报告，成功/失败均上传运行日志和原始结果（保留 30 天），不上传浏览器 Cookie 或 profile。
 
-**一次性准备 self-hosted Windows runner：**
+**使用 GitHub 官方托管的 `windows-latest`，不需要自托管 runner，也不需要个人电脑保持开机。**
 
-1. 在 GitHub 仓库 **Settings → Actions → Runners → New self-hosted runner** 中按页面命令注册一台 Windows 机器，具备 `self-hosted`、`windows` 标签；安装 Git、PowerShell 7、Google Chrome。Python 和 Playwright 依赖由流程安装，仓库已有 librime 运行库。
-2. 本流程使用已经实测可取得正文的**有界面 Chrome**。runner 必须在登录的交互用户会话中运行 `run.cmd`，**不要安装为 Windows 服务**；机器在周一执行期间须在线且不休眠。流程会检查 Chrome、librime 和交互会话条件。
-3. 在 **Settings → Actions → General → Workflow permissions** 允许读写仓库；如 `main` 有分支保护，应允许该自动提交，或改为提交 PR 的发布方式。无需个人访问令牌，但组织策略可能禁用 `GITHUB_TOKEN` 写入。
-4. 首次建议手动运行一次，确认该 runner 的网络可访问 GitHub、热榜接口和知乎。知乎可能要求人工登录/验证；遇到此情况任务会失败，而不会把摘要冒充正文发布。不保证任意云机房 IP 都能抓取成功。
+公开仓库使用 GitHub 官方**标准 runner 的计算用量免费**（[官方说明](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#standard-github-hosted-runners-for-public-repositories)）；本流程没有选择收费的 larger runner。[官方 Windows 镜像](https://github.com/actions/runner-images/blob/main/images/windows/Windows2025-Readme.md) 已预装 Git、PowerShell 和 Chrome，Python/Playwright 依赖由流程安装，librime 使用仓库内的 Windows 运行库。每次运行都会实际验证有界面 Chrome 渲染及 octagram 模块，不以本地登录会话或 `UserInteractive` 标记作为运行前提。仓库与子模块使用浅克隆，减少官方 runner 的磁盘占用。
+
+1. 确认仓库 **Actions** 已启用，并在 **Settings → Actions → General → Workflow permissions** 允许写入仓库；如 `main` 有分支保护，应允许自动提交，或改为提交 PR 的发布方式。无需个人访问令牌，但组织策略可能限制 `GITHUB_TOKEN` 写入。
+2. 首次建议手动运行一次，验证官方 runner 上的完整链路。**免费提供计算环境不等于知乎一定放行云机房 IP**；遇到 403、登录或验证码要求，流程会失败并保留旧报告，不会用摘要冒充正文发布。
+3. 每次任务使用独立的临时 Windows 环境；无需注册 runner、配置本地自动登录或运行 `run.cmd`。
 
 浏览器独立 profile 位于 runner 临时目录，不复用日常 Chrome 用户目录，也不会加入缓存或提交。该定时任务不运行需要前台焦点的系统输入法黑盒测试。
 

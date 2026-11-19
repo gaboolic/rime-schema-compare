@@ -15,9 +15,9 @@ concurrency:
 
 jobs:
   benchmark:
-    # Use the same native, headed Chrome environment validated by this project.
-    # Run the runner as an interactive Windows user, not a Windows service.
-    runs-on: [self-hosted, windows]
+    # Standard GitHub-hosted Windows runners are free for public repositories.
+    # Keep native Chrome + the repository's Windows librime; no personal PC needed.
+    runs-on: windows-latest
     timeout-minutes: 120
     defaults:
       run:
@@ -32,7 +32,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0
+          fetch-depth: 1
           submodules: recursive
 
       - name: Set up Python
@@ -51,20 +51,41 @@ jobs:
 
       - name: Check runner prerequisites and choose Shanghai corpus date
         run: |
-          if (-not [Environment]::UserInteractive) {
-            throw "Headed Chrome requires an interactive Windows runner. Run run.cmd as a logged-in user instead of a Windows service."
-          }
           if (-not (Test-Path "lib/rime.dll")) { throw "Missing lib/rime.dll" }
           $chromePaths = @(
             "$env:ProgramFiles/Google/Chrome/Application/chrome.exe",
             "${env:ProgramFiles(x86)}/Google/Chrome/Application/chrome.exe",
             "$env:LOCALAPPDATA/Google/Chrome/Application/chrome.exe"
           )
-          if (-not ($chromePaths | Where-Object { Test-Path $_ })) { throw "Install Google Chrome for this runner user" }
+          if (-not ($chromePaths | Where-Object { Test-Path $_ })) { throw "Google Chrome missing from the hosted runner image" }
           $today = [TimeZoneInfo]::ConvertTimeBySystemTimeZoneId([datetime]::UtcNow, "China Standard Time").ToString("yyyy-MM-dd")
           "CORPUS_DATE=$today" >> $env:GITHUB_ENV
           "CORPUS_PATH=data/corpus/zhihu_hotlist_$today.txt" >> $env:GITHUB_ENV
           New-Item -ItemType Directory -Path "$env:RUN_DIR/results", "$env:RUN_DIR/report" -Force | Out-Null
+          # Test actual browser capability instead of assuming UserInteractive
+          # describes the hosted runner's browser/desktop capabilities.
+          @'
+          import ctypes
+          from pathlib import Path
+          from playwright.sync_api import sync_playwright
+          dll = ctypes.CDLL(str(Path("lib/rime.dll").resolve()))
+          find_module = dll.RimeFindModule
+          find_module.argtypes = [ctypes.c_char_p]
+          find_module.restype = ctypes.c_void_p
+          if not find_module(b"octagram"):
+              raise RuntimeError("librime-octagram is unavailable")
+          with sync_playwright() as p:
+              browser = p.chromium.launch(channel="chrome", headless=False)
+              try:
+                  page = browser.new_page()
+                  page.set_content("<title>Weekly CI browser check</title><p>ready</p>")
+                  if page.title() != "Weekly CI browser check":
+                      raise RuntimeError("Chrome could not render the test page")
+                  print("Native Chrome headed rendering and librime-octagram checks passed")
+              finally:
+                  browser.close()
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { throw "Hosted browser/librime runtime check failed" }
 
       - name: Restore verified model download cache
         uses: actions/cache@v4
@@ -78,7 +99,7 @@ jobs:
         run: |
           git submodule sync --recursive
           if ($LASTEXITCODE -ne 0) { throw "Submodule sync failed" }
-          git submodule update --init --recursive --remote
+          git submodule update --init --recursive --depth 1 --remote
           if ($LASTEXITCODE -ne 0) { throw "Upstream scheme update failed" }
 
       - name: Prepare all eleven vendors and verified current models
