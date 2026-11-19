@@ -111,7 +111,7 @@ jobs:
       - name: Fetch today's Zhihu answer bodies
         run: |
           $profile = Join-Path $env:RUNNER_TEMP "rime-zhihu-profile"
-          python scripts/download_zhihu_hotlist.py --headed --browser-channel chrome --profile-dir $profile --require-bodies --require-all-bodies --limit 30 --answers 3 --out $env:CORPUS_PATH 2>&1 | Tee-Object -FilePath "$env:RUN_DIR/download.log"
+          python scripts/download_zhihu_hotlist.py --headed --browser-channel chrome --profile-dir $profile --require-bodies --require-all-bodies --limit 5 --answers 1 --delay 5 --diagnostics-dir "$env:RUN_DIR/download-diagnostics" --out $env:CORPUS_PATH 2>&1 | Tee-Object -FilePath "$env:RUN_DIR/download.log"
           if ($LASTEXITCODE -ne 0) { throw "Answer download failed; existing reports will not be published over" }
 
       - name: Benchmark today's corpus into staging reports
@@ -123,7 +123,7 @@ jobs:
 
       - name: Validate all results before publishing
         run: |
-          python scripts/validate_weekly_benchmark.py --corpus $env:CORPUS_PATH --artifacts "$env:RUN_DIR/results" --date $env:CORPUS_DATE --min-sentences 100 --report-dir "$env:RUN_DIR/report"
+          python scripts/validate_weekly_benchmark.py --corpus $env:CORPUS_PATH --artifacts "$env:RUN_DIR/results" --date $env:CORPUS_DATE --min-sentences 20 --report-dir "$env:RUN_DIR/report"
           if ($LASTEXITCODE -ne 0) { throw "Validation failed; keeping previous published reports" }
           Copy-Item "$env:RUN_DIR/report/latest.md" report/latest.md -Force
           Copy-Item "$env:RUN_DIR/report/$env:CORPUS_DATE.md" "report/$env:CORPUS_DATE.md" -Force

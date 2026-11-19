@@ -172,6 +172,9 @@ class WorkflowTests(unittest.TestCase):
         steps = workflow['jobs']['benchmark']['steps']
         text = '\n'.join(s.get('run', '') for s in steps)
         self.assertIn('--require-all-bodies', text)
+        self.assertIn('--limit 5 --answers 1 --delay 5', text)
+        self.assertIn('--diagnostics-dir', text)
+        self.assertIn('--min-sentences 20', text)
         self.assertIn('validate_weekly_benchmark.py', text)
         regression = next(s['run'] for s in steps if s['name'].startswith('Install dependencies'))
         self.assertLess(regression.index('New-Item'), regression.index('python -m pip'))

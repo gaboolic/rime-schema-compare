@@ -33,7 +33,8 @@ import re
 import sys
 import time
 import urllib.request
-from datetime import date
+from datetime import date, datetime
+from urllib.parse import urlsplit, urlunsplit
 from pathlib import Path
 
 DEFAULT_API = "https://uapis.cn/api/v1/misc/hotboard?type=zhihu"
@@ -101,6 +102,26 @@ def download(limit: int = 30, api: str = DEFAULT_API, proxy: str = "", *, proven
     return rows[:limit]
 
 
+def unavailable_page_diagnostic(url: str, title: str, body: str) -> dict:
+    """Describe missing answer DOM without treating HTTP 200 as a body success."""
+    parts = urlsplit(url)
+    safe_url = urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    text = _plain_text(body)
+    combined = (title + " " + text).lower()
+    if any(term in combined for term in ("访问过于频繁", "请求过于频繁", "too many requests")):
+        reason = "rate_limited"
+    elif "/account/unhuman" in parts.path or any(term in combined for term in ("验证码", "安全验证", "captcha", "40362", "请求存在异常")):
+        reason = "verification_required"
+    elif "/signin" in parts.path:
+        reason = "login_required"
+    elif any(term in combined for term in ("登录/注册", "登录知乎", "sign in")):
+        reason = "login_prompt"
+    else:
+        reason = "no_answer_dom"
+    return {"final_url": safe_url, "page_title": _plain_text(title)[:200],
+            "reason": reason, "body_preview": text[:500]}
+
+
 class _ZhihuBrowser:
     """Native Chromium-family session for rendered, publicly accessible answers."""
 
@@ -154,8 +175,12 @@ class _ZhihuBrowser:
             try:
                 page.wait_for_selector(".List-item .RichContent-inner", timeout=30000)
             except Exception:
-                self.last_fetch["error"] = page.locator("body").inner_text()[:500]
-                print(f"[no answers] {qid}: HTTP {self.last_fetch['initial_http_status']}", file=sys.stderr)
+                diagnostic = unavailable_page_diagnostic(page.url, page.title(), page.locator("body").inner_text())
+                self.last_fetch.update(diagnostic)
+                self.last_fetch["error"] = diagnostic["reason"]
+                print(f"[no answers] {qid}: HTTP {self.last_fetch['initial_http_status']}; "
+                      f"reason={diagnostic['reason']}; url={diagnostic['final_url']}; "
+                      f"title={diagnostic['page_title']}", file=sys.stderr)
                 return []
             count_js = "() => document.querySelectorAll('.List-item .RichContent-inner').length"
             last = 0
@@ -211,7 +236,8 @@ class _ZhihuBrowser:
 
 
 def write_corpus(rows: list, out: Path, browser: "_ZhihuBrowser | None" = None, delay: float = 1.0, max_answers: int = 3,
-                 require_bodies: bool = False, require_all_bodies: bool = False) -> int:
+                 require_bodies: bool = False, require_all_bodies: bool = False,
+                 diagnostics_dir: Path | None = None) -> int:
     lines = []
     fetched = 0
     answer_count = 0
@@ -238,12 +264,18 @@ def write_corpus(rows: list, out: Path, browser: "_ZhihuBrowser | None" = None, 
         if i < len(rows) - 1 and delay:
             time.sleep(delay)
         lines.append("")
+    if diagnostics_dir is not None:
+        diagnostics_dir.mkdir(parents=True, exist_ok=True)
+        diagnostic = {"fetched_at": datetime.now().astimezone().isoformat(),
+                      "questions": len(rows), "questions_with_answer_bodies": fetched,
+                      "answer_bodies": answer_count, "fallback_questions": len(rows) - fetched,
+                      "question_details": details}
+        (diagnostics_dir / "questions.json").write_text(json.dumps(diagnostic, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     if require_bodies and fetched == 0:
         raise RuntimeError("No answer bodies fetched; refusing to overwrite corpus with excerpts/titles")
     if require_all_bodies and (not rows or fetched != len(rows)):
         raise RuntimeError(f"Answer bodies missing for {len(rows) - fetched}/{len(rows)} questions; refusing to overwrite corpus")
     out.write_text("\n".join(lines), encoding="utf-8")
-    from datetime import datetime
     import hashlib
     metadata = {"fetched_at": datetime.now().astimezone().isoformat(),
                 "questions": len(rows), "questions_with_answer_bodies": fetched,
@@ -270,6 +302,7 @@ def main(argv=None) -> int:
     parser.add_argument("--require-all-bodies", action="store_true", help="Fail without overwriting if any hot-list question has no actual answer body")
     parser.add_argument("--answers", type=int, default=3, help="top-N answers to fetch per question (default: 3)")
     parser.add_argument("--delay", type=float, default=1.0, help="extra seconds to wait between questions (default: 1)")
+    parser.add_argument("--diagnostics-dir", type=Path, default=None, help="Save per-question diagnostics even when body-required checks fail")
     args = parser.parse_args(argv)
 
     proxy = args.proxy or os.environ.get("ALL_PROXY") or os.environ.get("HTTPS_PROXY") or ""
@@ -294,7 +327,7 @@ def main(argv=None) -> int:
     try:
         n_lines = write_corpus(rows, args.out, browser=browser, delay=args.delay,
                                max_answers=args.answers, require_bodies=args.require_bodies,
-                               require_all_bodies=args.require_all_bodies)
+                               require_all_bodies=args.require_all_bodies, diagnostics_dir=args.diagnostics_dir)
         meta_path = args.out.with_suffix(".meta.json")
         metadata = json.loads(meta_path.read_text(encoding="utf-8"))
         metadata.update(provenance)

@@ -119,9 +119,11 @@ python scripts/download_zhihu_hotlist.py --headed --browser-channel chrome --pro
 
 [Weekly Benchmark Report](.github/workflows/weekly-report.yml) 在**北京时间每周一 08:00**执行（cron `0 0 * * 1` 使用 UTC；GitHub 可能延迟启动），也可在仓库 Actions 页面手动选择 **Run workflow**。配置需先进入默认分支 `main` 才会按时运行。
 
-流程会更新所有方案子模块，用 [`setup_benchmark_vendors.py`](scripts/setup_benchmark_vendors.py) 从同一源码版本重建带模型副本、安装官方朙月/八股文并下载校验当前万象 LTS 模型；随后抓取当天知乎热榜每题最多 3 条回答，仅对当天语料跑全部 11 个默认测试项。模型缓存每次都根据上游当前附件的大小与 SHA-256 校验，不会静默沿用旧模型。
+流程会更新所有方案子模块，用 [`setup_benchmark_vendors.py`](scripts/setup_benchmark_vendors.py) 从同一源码版本重建带模型副本、安装官方朙月/八股文并下载校验当前万象 LTS 模型；随后默认只抓取当天知乎热榜前 **5 个问题、每题最多 1 条回答、问题间隔 5 秒**，降低请求数量和频率，再对当天语料跑全部 11 个默认测试项。模型缓存每次都根据上游当前附件的大小与 SHA-256 校验，不会静默沿用旧模型。
 
-报告先生成在运行专属的 `artifacts/weekly-...` 暂存目录；[`validate_weekly_benchmark.py`](scripts/validate_weekly_benchmark.py) 会验证热榜 API 更新时间和采集时间均属于当天（北京时间）、每题至少一条正文、无摘要回退、语料/模型哈希、11 项齐全、每项至少 100 句、没有缺码或解码失败，以及实际编译模型和禁用用户词库配置。全部通过后才更新 `report/latest.md`、当天报告，并自动提交当天正文/来源元数据和方案版本到 `main`。失败保留远端旧报告，成功/失败均上传运行日志和原始结果（保留 30 天），不上传浏览器 Cookie 或 profile。
+报告先生成在运行专属的 `artifacts/weekly-...` 暂存目录；[`validate_weekly_benchmark.py`](scripts/validate_weekly_benchmark.py) 会验证热榜 API 更新时间和采集时间均属于当天（北京时间）、每题至少一条正文、无摘要回退、语料/模型哈希、11 项齐全、每项至少 20 句、没有缺码或解码失败，以及实际编译模型和禁用用户词库配置。全部通过后才更新 `report/latest.md`、当天报告，并自动提交当天正文/来源元数据和方案版本到 `main`。失败保留远端旧报告，成功/失败均上传运行日志和原始结果（保留 30 天），不上传浏览器 Cookie 或 profile。
+
+减少抓取量不保证解决云端 IP 或登录限制：如果第一个问题就失败，或 HTTP 200 但没有回答 DOM，可能实际返回了登录/验证页。下载日志会记录页面类型、标题和去掉查询参数的跳转地址；即使没有取得任何正文，运行附件中的 `download-diagnostics/questions.json` 也会保留逐题诊断，不会发布摘要替代正文。5 条回答属于小样本，正确率波动较大，不宜直接与大规模正文评测比较。
 
 **使用 GitHub 官方托管的 `windows-latest`，不需要自托管 runner，也不需要个人电脑保持开机。**
 
